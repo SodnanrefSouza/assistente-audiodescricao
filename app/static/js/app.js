@@ -39,6 +39,7 @@ const els = {
   reducedMotionToggle: $('reducedMotionToggle'),
   projectTitle: $('projectTitle'),
   videoFile: $('videoFile'),
+  selectedFileName: $('selectedFileName'),
   uploadBtn: $('uploadBtn'),
   projectList: $('projectList'),
   currentTitle: $('currentTitle'),
@@ -595,6 +596,13 @@ function validateVideoFile(file) {
     return 'Formato não suportado. Use MP4, MOV, MKV, AVI, WEBM, M4V, MPG, MPEG ou WMV.';
   }
   return '';
+}
+
+function updateSelectedFileName() {
+  const file = els.videoFile.files?.[0];
+  els.selectedFileName.textContent = file
+    ? `${file.name} • ${fmtBytes(file.size)}`
+    : 'Nenhum vídeo selecionado.';
 }
 
 function postChunkWithProgress(uploadId, chunkIndex, totalChunks, chunk, fileSize, uploadedBefore) {
@@ -1183,6 +1191,7 @@ function bindEvents() {
   els.contrastToggle.addEventListener('click', () => toggleVisualPref('contrast'));
   els.largeTextToggle.addEventListener('click', () => toggleVisualPref('largeText'));
   els.reducedMotionToggle.addEventListener('click', () => toggleVisualPref('reducedMotion'));
+  els.videoFile.addEventListener('change', updateSelectedFileName);
   els.uploadBtn.addEventListener('click', uploadProject);
   els.detectBtn.addEventListener('click', detectSilences);
   els.deleteProjectBtn.addEventListener('click', deleteCurrentProject);

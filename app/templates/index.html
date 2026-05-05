@@ -45,7 +45,11 @@
         <input id="projectTitle" class="input" type="text" placeholder="Ex.: Curta do Ícaro - versão 1">
 
         <label class="label" for="videoFile">Vídeo</label>
-        <input id="videoFile" class="file-input" type="file" accept="video/*">
+        <div class="file-picker">
+          <input id="videoFile" class="file-input" type="file" accept="video/*">
+          <label class="file-button" for="videoFile">Escolher vídeo</label>
+          <div class="file-name" id="selectedFileName" aria-live="polite">Nenhum vídeo selecionado.</div>
+        </div>
         <button class="button primary" id="uploadBtn">Criar projeto</button>
         <p class="hint">Tudo roda localmente no seu computador. Vídeos grandes são enviados em partes e ficam salvos em <code>data/projects</code>. O limite real depende do espaço em disco.</p>
       </section>
