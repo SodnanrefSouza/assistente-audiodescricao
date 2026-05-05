@@ -14,11 +14,18 @@
       <h1>Assistente de Audiodescrição</h1>
       <p class="subtitle">Detecta pausas entre falas, organiza o roteiro, grava a narração e exporta arquivos para edição.</p>
     </div>
-    <div class="status-card" id="healthStatus">
-      <span class="dot"></span>
-      <div>
-        <strong>Verificando FFmpeg...</strong>
-        <small>Obrigatório para detectar pausas e exportar áudio/vídeo.</small>
+    <div class="topbar-side">
+      <div class="status-card" id="healthStatus">
+        <span class="dot"></span>
+        <div>
+          <strong>Verificando FFmpeg...</strong>
+          <small>Obrigatório para detectar pausas e exportar áudio/vídeo.</small>
+        </div>
+      </div>
+      <div class="visual-prefs" aria-label="Preferências visuais">
+        <button class="pref-toggle" id="contrastToggle" type="button" aria-pressed="false">Alto contraste</button>
+        <button class="pref-toggle" id="largeTextToggle" type="button" aria-pressed="false">Texto maior</button>
+        <button class="pref-toggle" id="reducedMotionToggle" type="button" aria-pressed="false">Menos movimento</button>
       </div>
     </div>
   </header>

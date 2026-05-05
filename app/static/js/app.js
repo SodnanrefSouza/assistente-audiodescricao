@@ -1,3 +1,15 @@
+const VISUAL_PREFS_KEY = 'adAssistVisualPrefs';
+
+function readVisualPrefs() {
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
+  const defaults = { contrast: false, largeText: false, reducedMotion: prefersReducedMotion };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(VISUAL_PREFS_KEY) || '{}') };
+  } catch (_) {
+    return defaults;
+  }
+}
+
 const state = {
   project: null,
   mediaRecorder: null,
@@ -15,12 +27,16 @@ const state = {
   transcriptSaveTimer: null,
   notesSaveTimer: null,
   transcriptSegments: [],
+  visualPrefs: readVisualPrefs(),
 };
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
   healthStatus: $('healthStatus'),
+  contrastToggle: $('contrastToggle'),
+  largeTextToggle: $('largeTextToggle'),
+  reducedMotionToggle: $('reducedMotionToggle'),
   projectTitle: $('projectTitle'),
   videoFile: $('videoFile'),
   uploadBtn: $('uploadBtn'),
@@ -127,6 +143,28 @@ function statusLabel(status) {
     descartado: 'Descartado',
   };
   return labels[status] || status || 'Pendente';
+}
+
+function saveVisualPrefs() {
+  localStorage.setItem(VISUAL_PREFS_KEY, JSON.stringify(state.visualPrefs));
+}
+
+function applyVisualPrefs() {
+  document.body.dataset.contrast = state.visualPrefs.contrast ? 'high' : 'standard';
+  document.body.dataset.largeText = state.visualPrefs.largeText ? 'true' : 'false';
+  document.body.dataset.motion = state.visualPrefs.reducedMotion ? 'reduced' : 'standard';
+  els.contrastToggle.setAttribute('aria-pressed', String(!!state.visualPrefs.contrast));
+  els.largeTextToggle.setAttribute('aria-pressed', String(!!state.visualPrefs.largeText));
+  els.reducedMotionToggle.setAttribute('aria-pressed', String(!!state.visualPrefs.reducedMotion));
+  els.contrastToggle.classList.toggle('active', !!state.visualPrefs.contrast);
+  els.largeTextToggle.classList.toggle('active', !!state.visualPrefs.largeText);
+  els.reducedMotionToggle.classList.toggle('active', !!state.visualPrefs.reducedMotion);
+}
+
+function toggleVisualPref(key) {
+  state.visualPrefs[key] = !state.visualPrefs[key];
+  saveVisualPrefs();
+  applyVisualPrefs();
 }
 
 function showToast(message, ms = 3600) {
@@ -1142,6 +1180,9 @@ function setupPlayerButtons() {
 }
 
 function bindEvents() {
+  els.contrastToggle.addEventListener('click', () => toggleVisualPref('contrast'));
+  els.largeTextToggle.addEventListener('click', () => toggleVisualPref('largeText'));
+  els.reducedMotionToggle.addEventListener('click', () => toggleVisualPref('reducedMotion'));
   els.uploadBtn.addEventListener('click', uploadProject);
   els.detectBtn.addEventListener('click', detectSilences);
   els.deleteProjectBtn.addEventListener('click', deleteCurrentProject);
@@ -1182,6 +1223,7 @@ function bindEvents() {
 }
 
 async function init() {
+  applyVisualPrefs();
   bindEvents();
   await checkHealth();
   await loadProjects();

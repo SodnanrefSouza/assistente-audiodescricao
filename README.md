@@ -260,6 +260,7 @@ Além do upload fracionado, esta versão melhora o fluxo de trabalho para audiod
 - lixeira de gravações substituídas/removidas em `recordings_trash`;
 - autosave de intervalos, observações e transcrição;
 - guia de edição com botões para próxima pausa pendente, pausa anterior/próxima e marcar revisado;
+- preferências visuais persistentes: alto contraste, texto maior e movimento reduzido;
 - painel de transcrição com busca e leitura de falas próximas de cada pausa;
 - exportação de faixa WAV e vídeo MP4 final em tarefa de fundo, para vídeos grandes não travarem a interface.
 

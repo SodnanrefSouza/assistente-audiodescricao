@@ -22,6 +22,8 @@ Também existem três áreas de apoio:
 - **Transcrição e contexto**: guarda uma transcrição com tempos e mostra falas próximas de cada pausa.
 - **Histórico de trabalho**: permite restaurar versões anteriores do projeto.
 
+No topo da tela há preferências visuais para **alto contraste**, **texto maior** e **menos movimento**. Essas escolhas ficam salvas no navegador.
+
 ## Criando um projeto
 
 1. Abra o programa.

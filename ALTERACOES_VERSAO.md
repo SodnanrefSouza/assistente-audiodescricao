@@ -16,6 +16,7 @@ Esta versão foi ajustada para vídeos grandes e para um fluxo de edição mais 
 - Remover ou substituir gravação move o arquivo anterior para `recordings_trash`.
 - Intervalos, observações e transcrição têm autosave.
 - A interface ganhou guia de edição, navegação por pausas, próxima pendente e marcação de revisão.
+- A interface ganhou preferências visuais persistentes para alto contraste, texto maior e movimento reduzido.
 - O painel de transcrição aceita SRT/VTT ou linhas com tempo para mostrar contexto antes/depois das pausas.
 - Exportação de faixa WAV e vídeo final MP4 roda em tarefa de fundo.
 
