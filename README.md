@@ -1,10 +1,10 @@
-# Assistente de Audiodescrição — MVP3
+# Assistente de Audiodescrição
 
 Software local para apoiar a produção de audiodescrição em vídeos. O foco é ser simples para pessoas leigas: enviar um vídeo, detectar pausas entre falas, revisar os intervalos, escrever/gravar a audiodescrição e exportar arquivos úteis para edição.
 
 Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramenta menos poluída do que editores completos, focada na marcação dos tempos de silêncio e na gravação/organização da audiodescrição.
 
-## O que o MVP3 faz
+## O que o app faz
 
 - Cria projetos locais a partir de vídeos.
 - Detecta automaticamente silêncios usando FFmpeg.
@@ -142,7 +142,7 @@ Observação: o executável continua precisando do FFmpeg. Você pode instalar F
 ## Estrutura do projeto
 
 ```text
-assistente_audiodescricao_mvp3/
+assistente-audiodescricao/
 ├─ app/
 │  ├─ main.py                    # Rotas Flask e inicialização do app
 │  ├─ core/

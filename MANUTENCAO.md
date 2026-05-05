@@ -401,7 +401,7 @@ A porcentagem é atualizada por `detect_silences_with_progress()` em `app/core/f
 
 ### Limitação técnica
 
-O `JobManager` é em memória. Isso é suficiente para MVP local, mas significa que, se o programa for fechado durante uma tarefa, o histórico da tarefa em andamento é perdido. Os projetos salvos continuam no disco normalmente.
+O `JobManager` é em memória. Isso é suficiente para uma aplicação local e de usuário único, mas significa que, se o programa for fechado durante uma tarefa, o histórico da tarefa em andamento é perdido. Os projetos salvos continuam no disco normalmente.
 
 ### Onde mexer para melhorar progresso
 

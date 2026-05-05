@@ -55,7 +55,7 @@ def runtime_data_dir() -> Path:
 class JobManager:
     """Gerenciador simples de tarefas em segundo plano.
 
-    Ele fica em memória porque o MVP é local e de usuário único. Se o programa for fechado, tarefas em andamento são encerradas.
+    Ele fica em memória porque o aplicativo é local e de usuário único. Se o programa for fechado, tarefas em andamento são encerradas.
     """
 
     def __init__(self) -> None:
@@ -699,7 +699,7 @@ def run_app() -> None:
     url = f"http://{host}:{port}"
     app = create_app()
     print("=" * 72)
-    print("Assistente de Audiodescrição — MVP3")
+    print("Assistente de Audiodescrição")
     print(f"Acesse: {url}")
     print(f"Dados locais: {runtime_data_dir()}")
     print("Para encerrar, feche esta janela ou pressione Ctrl+C no terminal.")
