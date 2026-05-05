@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#workspace">Ir para a edição</a>
   <header class="topbar">
     <div>
       <p class="eyebrow">MVP3 local</p>
@@ -59,7 +60,7 @@
       </section>
     </aside>
 
-    <section class="workspace">
+    <section class="workspace" id="workspace">
       <section class="panel project-header" id="projectHeader">
         <div>
           <p class="eyebrow">Projeto atual</p>
@@ -69,6 +70,21 @@
         <div class="header-actions">
           <button class="button ghost danger" id="deleteProjectBtn" disabled>Excluir projeto</button>
         </div>
+      </section>
+
+      <section class="panel workflow-panel" aria-labelledby="workflowTitle">
+        <div class="workflow-copy">
+          <p class="eyebrow">Guia de edição</p>
+          <h2 id="workflowTitle">Próximo passo</h2>
+          <p id="workflowHint" class="muted">Abra um projeto para ver o andamento da audiodescrição.</p>
+        </div>
+        <div class="workflow-actions">
+          <button class="button" id="prevPauseBtn" disabled>Pausa anterior</button>
+          <button class="button primary" id="nextPendingBtn" disabled>Próxima pendente</button>
+          <button class="button" id="nextPauseBtn" disabled>Próxima pausa</button>
+          <button class="button success" id="markReviewedBtn" disabled>Marcar revisado</button>
+        </div>
+        <div id="workflowStats" class="workflow-stats" aria-live="polite"></div>
       </section>
 
       <section class="grid-two">
@@ -148,6 +164,40 @@
         <button class="button" id="saveNotesBtn" disabled>Salvar observações</button>
       </section>
 
+      <section class="panel transcript-panel">
+        <div class="section-header">
+          <div>
+            <h2>Transcrição e contexto</h2>
+            <p class="muted">Cole uma transcrição com tempos para consultar falas antes e depois de cada pausa.</p>
+          </div>
+          <button class="button" id="saveTranscriptBtn" disabled>Salvar transcrição</button>
+        </div>
+        <label class="label" for="transcriptText">Texto da transcrição</label>
+        <textarea id="transcriptText" class="textarea transcript-textarea" rows="5" placeholder="Aceita SRT/VTT ou linhas como 00:01:23 fala do vídeo..."></textarea>
+        <div class="transcript-tools">
+          <label>
+            Buscar na transcrição
+            <input id="transcriptSearch" class="input" type="search" placeholder="Digite uma palavra ou frase">
+          </label>
+          <label>
+            Contexto antes/depois (s)
+            <input id="transcriptContextSeconds" class="input" type="number" min="2" max="60" step="1" value="10">
+          </label>
+        </div>
+        <div id="transcriptPreview" class="transcript-preview" aria-live="polite"></div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="section-header">
+          <div>
+            <h2>Histórico de trabalho</h2>
+            <p class="muted">Cada salvamento cria um ponto de retorno local para evitar perdas.</p>
+          </div>
+          <button class="button" id="refreshHistoryBtn" disabled>Atualizar histórico</button>
+        </div>
+        <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
+      </section>
+
       <section class="panel intervals-panel">
         <div class="intervals-header">
           <div>
@@ -174,8 +224,8 @@
     </section>
   </main>
 
-  <div id="toast" class="toast" hidden></div>
-  <div id="loading" class="loading" hidden>
+  <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+  <div id="loading" class="loading" hidden role="dialog" aria-modal="true" aria-live="polite">
     <div class="loading-card">
       <div class="spinner"></div>
       <strong id="loadingText">Processando...</strong>

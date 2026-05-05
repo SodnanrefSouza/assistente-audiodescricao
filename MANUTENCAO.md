@@ -59,11 +59,16 @@ GET    /api/health                Verifica FFmpeg
 GET    /api/projects              Lista projetos
 POST   /api/projects              Cria projeto
 GET    /api/projects/<id>         Lê projeto
-DELETE /api/projects/<id>         Exclui projeto
+DELETE /api/projects/<id>         Arquiva projeto em data/trash
+GET    /api/projects/<id>/history Lista pontos do histórico
+POST   /api/projects/<id>/history/<snapshot>/restore Restaura histórico
+POST   /api/projects/<id>/transcript Salva transcrição/contexto
 POST   /api/projects/<id>/detect  Detecta silêncios
 POST   /api/projects/<id>/intervals/<index>       Salva roteiro/status
 POST   /api/projects/<id>/recordings/<index>      Salva gravação
 GET    /api/projects/<id>/export/<tipo>           Exporta arquivos
+POST   /api/projects/<id>/export/<tipo>/start     Exporta WAV/MP4 em segundo plano
+GET    /api/jobs/<job_id>/download                Baixa exportação pronta
 ```
 
 ### `app/core/ffmpeg_utils.py`
@@ -87,12 +92,30 @@ O FFmpeg retorna linhas contendo `silence_start`, `silence_end` e `silence_durat
 
 ### `app/core/projects.py`
 
-Responsável por criar, salvar, carregar, listar e excluir projetos.
+Responsável por criar, salvar, carregar, listar, arquivar e restaurar projetos.
 
 Cada projeto é salvo em:
 
 ```text
 data/projects/<project_id>/project.json
+```
+
+Cada salvamento cria um snapshot em:
+
+```text
+data/projects/<project_id>/history/
+```
+
+Projetos removidos pela interface são movidos para:
+
+```text
+data/trash/
+```
+
+Gravações removidas ou substituídas são movidas para:
+
+```text
+data/projects/<project_id>/recordings_trash/
 ```
 
 Estrutura simplificada:
@@ -104,7 +127,13 @@ Estrutura simplificada:
   "video_filename": "video.mp4",
   "duration": 120.5,
   "settings": {},
-  "intervals": []
+  "intervals": [],
+  "notes": "",
+  "transcript": {
+    "text": "",
+    "source": "manual",
+    "updated_at": "2026-05-05T17:30:00"
+  }
 }
 ```
 
@@ -284,6 +313,7 @@ AD_ASSIST_HOST=127.0.0.1
 AD_ASSIST_DATA_DIR=/caminho/dos/dados
 AD_ASSIST_UPLOAD_CHUNK_MB=64
 AD_ASSIST_MAX_CHUNK_MB=256
+AD_ASSIST_FFMPEG_TIMEOUT_SECONDS=21600
 FFMPEG_PATH=/caminho/ffmpeg
 FFPROBE_PATH=/caminho/ffprobe
 ```
@@ -316,6 +346,29 @@ Variáveis relevantes:
 
 O tamanho total do vídeo não é limitado pela aplicação. O limite real é espaço em disco, sistema de arquivos, navegador e tempo de processamento.
 
+## Histórico, autosave e recuperação
+
+`ProjectStore.save()` faz escrita atômica: grava primeiro em `project.json.tmp` e depois substitui `project.json`. Antes de substituir, guarda uma cópia do estado anterior em `history`.
+
+O front-end usa autosave com debounce para:
+
+- intervalos;
+- observações gerais;
+- transcrição.
+
+O histórico retém os pontos mais recentes definidos por `HISTORY_LIMIT` em `app/core/projects.py`.
+
+## Transcrição
+
+A transcrição é armazenada dentro do próprio `project.json`, no campo `transcript`.
+
+O parser de contexto fica no front-end, em `app/static/js/app.js`, e reconhece:
+
+- blocos SRT/VTT com `-->`;
+- linhas simples começando com tempo, como `00:01:23 fala`.
+
+O sistema não faz transcrição automática. Ele apenas organiza e consulta o texto informado pelo usuário.
+
 ## Tarefas em segundo plano e progresso
 
 A rota principal de detecção com progresso é:
@@ -328,6 +381,14 @@ Ela cria uma tarefa em memória no `JobManager` e retorna um `job_id`. O front-e
 
 ```text
 GET /api/jobs/<job_id>
+```
+
+As exportações pesadas usam o mesmo mecanismo:
+
+```text
+POST /api/projects/<project_id>/export/ad_audio/start
+POST /api/projects/<project_id>/export/final_video/start
+GET  /api/jobs/<job_id>/download
 ```
 
 O estado da tarefa pode ser:

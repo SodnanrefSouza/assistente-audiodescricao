@@ -16,6 +16,12 @@ A tela é dividida em cinco áreas principais:
 4. Exportações.
 5. Intervalos encontrados.
 
+Também existem três áreas de apoio:
+
+- **Guia de edição**: mostra o andamento e leva para a próxima pausa que precisa de atenção.
+- **Transcrição e contexto**: guarda uma transcrição com tempos e mostra falas próximas de cada pausa.
+- **Histórico de trabalho**: permite restaurar versões anteriores do projeto.
+
 ## Criando um projeto
 
 1. Abra o programa.
@@ -76,6 +82,8 @@ Cada intervalo mostra:
 - campo para roteiro;
 - campo para observações;
 - botão para gravação.
+- estado de salvamento automático.
+- contexto de transcrição, quando houver tempos reconhecidos.
 
 ### Qualidade do espaço
 
@@ -94,6 +102,39 @@ Exemplo:
 ```
 
 Prefira frases objetivas. Não tente narrar tudo que aparece na tela; priorize o que é importante para entender a cena.
+
+O intervalo é salvo automaticamente alguns instantes depois de você parar de digitar. O botão “Salvar intervalo” continua disponível para salvar imediatamente.
+
+## Usando o guia de edição
+
+Depois de detectar pausas, use o painel “Guia de edição” para trabalhar em sequência:
+
+- **Próxima pendente** leva ao próximo intervalo que ainda não foi revisado ou descartado.
+- **Pausa anterior** e **Próxima pausa** usam o tempo atual do vídeo para navegar.
+- **Marcar revisado** muda o status do intervalo atual para revisado.
+
+Essa navegação ajuda em vídeos longos, porque você não precisa procurar manualmente onde parou.
+
+## Usando transcrição e contexto
+
+Se você tiver uma transcrição do vídeo, cole no campo “Transcrição e contexto”. O sistema reconhece SRT/VTT e também linhas simples com tempo:
+
+```text
+00:01:23 Ícaro entra na sala.
+00:01:28 Ele olha para a mesa.
+```
+
+Quando os tempos são reconhecidos, cada intervalo mostra “Falas próximas da pausa”, separando o que vem antes, durante e depois. Isso ajuda a escrever a audiodescrição sem cobrir uma fala importante.
+
+Se a transcrição não tiver tempos, ela continua salva e pode ser consultada pela busca geral.
+
+## Histórico e recuperação
+
+O projeto salva um ponto de histórico a cada alteração importante: roteiro, status, observações, transcrição, detecção de pausas e gravações.
+
+No painel “Histórico de trabalho”, clique em “Restaurar” para voltar a um ponto anterior. O estado atual também é guardado antes da restauração.
+
+Projetos arquivados vão para `data/trash`. Gravações removidas ou substituídas vão para `recordings_trash` dentro da pasta do projeto. Isso reduz o risco de perder material por engano.
 
 ## Gravando a audiodescrição
 
@@ -138,11 +179,15 @@ Gera uma faixa de áudio com a audiodescrição posicionada nos tempos corretos 
 
 Essa faixa pode ser levada para um editor de vídeo.
 
+Em vídeos grandes, a exportação roda em segundo plano e mostra progresso enquanto o arquivo é preparado.
+
 ### Vídeo final .mp4
 
 Gera uma cópia do vídeo original com a audiodescrição misturada ao áudio original.
 
 Use essa opção para teste rápido. Para produção profissional, é melhor revisar a faixa em um editor como DaVinci ou Premiere.
+
+Essa exportação também roda em segundo plano para evitar travamento da interface.
 
 ## Cuidados importantes
 

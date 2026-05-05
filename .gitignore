@@ -10,3 +10,4 @@ build/
 *.spec
 .DS_Store
 *.log
+tmp*/

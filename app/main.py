@@ -33,7 +33,7 @@ from .core.ffmpeg_utils import (
     get_duration,
     recording_duration,
 )
-from .core.projects import ALLOWED_EXTENSIONS, ProjectStore, safe_filename
+from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, safe_filename
 from .core.timecode import parse_float
 
 
@@ -353,7 +353,7 @@ def create_app() -> Flask:
         try:
             video_path = store.import_existing_video(project, temp_path)
             project["duration"] = round(get_duration(video_path), 3)
-            store.save(project)
+            store.save(project, reason="Vídeo importado e duração validada")
         except Exception:
             store.delete(project["id"])
             raise
@@ -395,7 +395,7 @@ def create_app() -> Flask:
         except Exception as exc:
             store.delete(project["id"])
             raise RuntimeError(f"O arquivo foi enviado, mas não conseguimos ler a duração do vídeo. {exc}")
-        store.save(project)
+        store.save(project, reason="Vídeo importado e duração validada")
         return ok({"project": project})
 
     @app.get("/api/projects/<project_id>")
@@ -409,25 +409,49 @@ def create_app() -> Flask:
         if not store.exists(project_id):
             raise NotFound("Projeto não encontrado.")
         store.delete(project_id)
-        return ok({"message": "Projeto excluído."})
+        return ok({"message": "Projeto arquivado na lixeira local."})
 
     @app.post("/api/projects/<project_id>/notes")
     def update_project_notes(project_id: str):
         project = store.load(project_id)
         data = request.get_json(force=True, silent=True) or {}
         project["notes"] = data.get("notes", "")
-        store.save(project)
+        store.save(project, reason="Observações gerais atualizadas")
         return ok({"project": project})
 
+    @app.post("/api/projects/<project_id>/transcript")
+    def update_project_transcript(project_id: str):
+        project = store.load(project_id)
+        data = request.get_json(force=True, silent=True) or {}
+        transcript = project.get("transcript") or {}
+        transcript["text"] = data.get("text", "")
+        transcript["source"] = data.get("source", "")
+        transcript["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        project["transcript"] = transcript
+        store.save(project, reason="Transcrição/contexto atualizado")
+        return ok({"project": project})
+
+    @app.get("/api/projects/<project_id>/history")
+    def project_history(project_id: str):
+        return ok({"history": store.list_history(project_id)})
+
+    @app.post("/api/projects/<project_id>/history/<snapshot_id>/restore")
+    def restore_project_history(project_id: str, snapshot_id: str):
+        project = store.restore_history(project_id, snapshot_id)
+        return ok({"project": project, "message": "Histórico restaurado."})
+
     def _parse_detection_settings(project: dict[str, Any], data: dict[str, Any]) -> dict[str, float]:
+        def clamp(value: float, minimum: float, maximum: float) -> float:
+            return max(minimum, min(maximum, value))
+
         settings = project.get("settings", {})
         return {
-            "noise_db": parse_float(data.get("noise_db"), settings.get("noise_db", -35)),
-            "min_silence": parse_float(data.get("min_silence"), settings.get("min_silence", 1.0)),
-            "min_ad_duration": parse_float(data.get("min_ad_duration"), settings.get("min_ad_duration", 0.8)),
-            "padding_start": parse_float(data.get("padding_start"), settings.get("padding_start", 0.1)),
-            "padding_end": parse_float(data.get("padding_end"), settings.get("padding_end", 0.1)),
-            "preview_margin": parse_float(data.get("preview_margin"), settings.get("preview_margin", 2.0)),
+            "noise_db": clamp(parse_float(data.get("noise_db"), settings.get("noise_db", -35)), -80, 0),
+            "min_silence": clamp(parse_float(data.get("min_silence"), settings.get("min_silence", 1.0)), 0.2, 10),
+            "min_ad_duration": clamp(parse_float(data.get("min_ad_duration"), settings.get("min_ad_duration", 0.8)), 0.2, 30),
+            "padding_start": clamp(parse_float(data.get("padding_start"), settings.get("padding_start", 0.1)), 0, 5),
+            "padding_end": clamp(parse_float(data.get("padding_end"), settings.get("padding_end", 0.1)), 0, 5),
+            "preview_margin": clamp(parse_float(data.get("preview_margin"), settings.get("preview_margin", 2.0)), 0, 30),
         }
 
     @app.post("/api/projects/<project_id>/detect/start")
@@ -455,7 +479,7 @@ def create_app() -> Flask:
             )
             fresh_project["settings"] = settings
             fresh_project["intervals"] = intervals
-            store.save(fresh_project)
+            store.save(fresh_project, reason="Detecção automática de pausas")
             jobs.update(
                 job_id,
                 status="done",
@@ -485,7 +509,7 @@ def create_app() -> Flask:
         )
         project["settings"] = settings
         project["intervals"] = intervals
-        store.save(project)
+        store.save(project, reason="Detecção automática de pausas")
         return ok({"project": project, "message": f"{len(intervals)} intervalos encontrados."})
 
     @app.post("/api/projects/<project_id>/intervals/<int:index>")
@@ -498,8 +522,13 @@ def create_app() -> Flask:
         interval = intervals[index - 1]
         for key in ["title", "script", "notes", "status"]:
             if key in data:
-                interval[key] = data.get(key) or ""
-        store.save(project)
+                value = data.get(key) or ""
+                if key == "status" and value not in VALID_STATUSES:
+                    raise BadRequest("Status inválido para o intervalo.")
+                interval[key] = value
+        if interval.get("script") and interval.get("status") == "pendente":
+            interval["status"] = "roteirizado"
+        store.save(project, reason=f"Intervalo {index} atualizado")
         return ok({"project": project, "interval": interval})
 
     @app.post("/api/projects/<project_id>/recordings/<int:index>")
@@ -516,10 +545,11 @@ def create_app() -> Flask:
         if ext not in {".webm", ".ogg", ".wav", ".mp3", ".m4a"}:
             ext = ".webm"
         filename = f"intervalo_{index:03d}{ext}"
+        interval = intervals[index - 1]
+        store.trash_recording(project_id, interval.get("recording_filename"))
         path = store.recordings_dir(project_id) / filename
         audio.save(path)
 
-        interval = intervals[index - 1]
         rec_duration = recording_duration(path)
         interval["recording_filename"] = filename
         interval["recording_duration"] = round(rec_duration, 3) if rec_duration is not None else None
@@ -532,7 +562,7 @@ def create_app() -> Flask:
             )
         else:
             interval["warning"] = ""
-        store.save(project)
+        store.save(project, reason=f"Gravação do intervalo {index} salva")
         return ok({"project": project, "interval": interval})
 
     @app.delete("/api/projects/<project_id>/recordings/<int:index>")
@@ -543,10 +573,7 @@ def create_app() -> Flask:
             raise NotFound("Intervalo não encontrado.")
         interval = intervals[index - 1]
         filename = interval.get("recording_filename")
-        if filename:
-            path = store.recordings_dir(project_id) / filename
-            if path.exists():
-                path.unlink()
+        store.trash_recording(project_id, filename)
         interval["recording_filename"] = None
         interval["recording_duration"] = None
         interval["warning"] = ""
@@ -554,7 +581,7 @@ def create_app() -> Flask:
             interval["status"] = "roteirizado"
         else:
             interval["status"] = "pendente"
-        store.save(project)
+        store.save(project, reason=f"Gravação do intervalo {index} removida")
         return ok({"project": project, "interval": interval})
 
     @app.get("/media/<project_id>/video")
@@ -573,8 +600,7 @@ def create_app() -> Flask:
             raise NotFound("Gravação não encontrada.")
         return send_file(path, conditional=True)
 
-    @app.get("/api/projects/<project_id>/export/<kind>")
-    def export_route(project_id: str, kind: str):
+    def _build_export_file(project_id: str, kind: str) -> Path:
         project = store.load(project_id)
         exports_dir = store.exports_dir(project_id)
         slug = project.get("slug") or "audiodescricao"
@@ -599,6 +625,58 @@ def create_app() -> Flask:
             path = build_final_mixed_video(project, project_folder, ad_path, exports_dir / f"{slug}_video_com_audiodescricao.mp4")
         else:
             raise NotFound("Tipo de exportação não encontrado.")
+        return path
+
+    @app.post("/api/projects/<project_id>/export/<kind>/start")
+    def export_start_route(project_id: str, kind: str):
+        project = store.load(project_id)
+        if kind not in {"ad_audio", "final_video"}:
+            raise BadRequest("Esta exportação não precisa de tarefa em segundo plano.")
+        job_id = jobs.create("export", f"Exportar {project.get('title') or project_id}")
+
+        def work() -> None:
+            jobs.update(
+                job_id,
+                percent=3,
+                message="Preparando exportação...",
+                details="A exportação roda em segundo plano para não travar a interface em vídeos grandes.",
+            )
+            if kind == "ad_audio":
+                jobs.update(job_id, percent=15, message="Gerando faixa de audiodescrição...", details="Misturando as gravações nos tempos corretos.")
+            else:
+                jobs.update(job_id, percent=10, message="Gerando vídeo final...", details="Criando a faixa de audiodescrição e misturando com o áudio original.")
+            path = _build_export_file(project_id, kind)
+            jobs.update(
+                job_id,
+                status="done",
+                percent=100,
+                message="Exportação concluída.",
+                details="O arquivo está pronto para baixar.",
+                result={
+                    "filename": path.name,
+                    "download_url": f"/api/jobs/{job_id}/download",
+                },
+                result_path=str(path),
+            )
+
+        jobs.run(job_id, work)
+        return ok({"job_id": job_id})
+
+    @app.get("/api/jobs/<job_id>/download")
+    def job_download(job_id: str):
+        job = jobs.get(job_id)
+        if not job:
+            raise NotFound("Tarefa não encontrada. Exporte novamente.")
+        if job.get("status") != "done" or not job.get("result_path"):
+            raise BadRequest("A exportação ainda não terminou.")
+        path = Path(job["result_path"])
+        if not path.exists():
+            raise NotFound("Arquivo exportado não encontrado.")
+        return send_file(path, as_attachment=True, download_name=path.name)
+
+    @app.get("/api/projects/<project_id>/export/<kind>")
+    def export_route(project_id: str, kind: str):
+        path = _build_export_file(project_id, kind)
         return send_file(path, as_attachment=True, download_name=path.name)
 
     return app

@@ -10,9 +10,12 @@ Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramen
 - Detecta automaticamente silêncios usando FFmpeg.
 - Lista intervalos úteis para audiodescrição.
 - Permite revisar cada intervalo no player de vídeo.
+- Mostra um guia de edição com próxima pausa pendente, pausa anterior/próxima e marcação de revisão.
 - Permite escrever roteiro de audiodescrição por intervalo.
 - Permite gravar áudio pelo navegador usando o microfone.
 - Salva cada gravação vinculada ao intervalo correto.
+- Salva edições em histórico local para reduzir risco de perda.
+- Permite colar transcrição com tempos para consultar falas antes e depois das pausas.
 - Avisa quando a gravação ficou maior que o espaço disponível.
 - Exporta:
   - roteiro em Markdown;
@@ -27,6 +30,7 @@ Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramen
 ## O que ele ainda não faz
 
 - Não cria a audiodescrição automaticamente por IA.
+- Não gera transcrição automática do vídeo; a transcrição pode ser colada/importada manualmente em formato com tempos.
 - Não entende o conteúdo visual da cena.
 - Não substitui revisão humana.
 - Não garante compatibilidade perfeita de CSV com todas as versões do Premiere/DaVinci, pois cada versão pode ter regras próprias de importação.
@@ -165,12 +169,14 @@ assistente_audiodescricao_mvp3/
 1. Rode `python run.py`.
 2. Envie um vídeo curto, de preferência MP4.
 3. Clique em “Detectar pausas automaticamente”.
-4. Revise os intervalos.
-5. Escreva uma audiodescrição curta em alguns cards.
-6. Grave a narração em alguns cards.
-7. Exporte a faixa `.wav`.
-8. Exporte o vídeo final `.mp4`.
-9. Valide se a narração não invade falas importantes.
+4. Use “Próxima pendente” para revisar os intervalos em ordem.
+5. Cole uma transcrição com tempos, se tiver, para consultar o contexto das falas.
+6. Escreva uma audiodescrição curta em alguns cards.
+7. Grave a narração em alguns cards.
+8. Confira o histórico de trabalho após salvar.
+9. Exporte a faixa `.wav`.
+10. Exporte o vídeo final `.mp4`.
+11. Valide se a narração não invade falas importantes.
 
 ## Boas práticas de audiodescrição no uso do sistema
 
@@ -242,3 +248,28 @@ ffmpeg -i entrada.mov -c:v libx264 -c:a aac -movflags +faststart saida.mp4
 ## Observação honesta sobre “qualquer tamanho”
 
 O sistema não tem mais limite fixo de upload do tipo 4 GB. Porém nenhum software local consegue garantir tamanho infinito: o limite real passa a ser o espaço em disco, o sistema de arquivos, estabilidade do navegador e tempo de processamento do FFmpeg.
+
+## Atualização desta versão: edição mais segura e acessível
+
+Além do upload fracionado, esta versão melhora o fluxo de trabalho para audiodescrição:
+
+- salvamento atômico de `project.json`, evitando arquivo quebrado em caso de interrupção no meio da escrita;
+- histórico local em `data/projects/<id>/history`, criado a cada salvamento;
+- restauração de pontos anteriores pela interface;
+- lixeira local para projetos arquivados em `data/trash`;
+- lixeira de gravações substituídas/removidas em `recordings_trash`;
+- autosave de intervalos, observações e transcrição;
+- guia de edição com botões para próxima pausa pendente, pausa anterior/próxima e marcar revisado;
+- painel de transcrição com busca e leitura de falas próximas de cada pausa;
+- exportação de faixa WAV e vídeo MP4 final em tarefa de fundo, para vídeos grandes não travarem a interface.
+
+### Formatos de transcrição aceitos
+
+O painel de transcrição reconhece SRT/VTT e linhas simples com tempo:
+
+```text
+00:01:23 Ícaro entra na sala.
+00:01:28 Ele olha para a mesa.
+```
+
+Com tempos reconhecidos, cada card de intervalo mostra as falas antes, durante e depois da pausa. Se a transcrição não tiver tempos, ela continua salva e pode ser usada pela busca geral.

@@ -89,6 +89,13 @@ def run_command(args: list[str], timeout: int | None = None) -> subprocess.Compl
     )
 
 
+def ffmpeg_timeout(default: int = 21600) -> int:
+    try:
+        return max(60, int(os.environ.get("AD_ASSIST_FFMPEG_TIMEOUT_SECONDS", str(default))))
+    except ValueError:
+        return default
+
+
 def get_media_info(path: Path) -> dict[str, Any]:
     args = [
         ffprobe_path(),
@@ -411,7 +418,7 @@ def build_ad_audio_track(
     filter_complex = ";".join(filter_parts)
 
     args.extend(["-filter_complex", filter_complex, "-map", "[out]", "-c:a", "pcm_s16le", str(output_path)])
-    result = run_command(args, timeout=600)
+    result = run_command(args, timeout=ffmpeg_timeout())
     if result.returncode != 0:
         raise RuntimeError(f"Erro ao gerar faixa de audiodescrição.\n{result.stderr[-4000:]}")
     return output_path
@@ -430,7 +437,7 @@ def build_final_mixed_video(project: dict[str, Any], project_folder: Path, ad_au
             "-i",
             str(ad_audio_path),
             "-filter_complex",
-            "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0[a]",
+            "[0:a:0][1:a:0]amix=inputs=2:duration=first:dropout_transition=0[a]",
             "-map",
             "0:v:0",
             "-map",
@@ -441,6 +448,8 @@ def build_final_mixed_video(project: dict[str, Any], project_folder: Path, ad_au
             "aac",
             "-b:a",
             "192k",
+            "-movflags",
+            "+faststart",
             "-shortest",
             str(output_path),
         ]
@@ -462,10 +471,12 @@ def build_final_mixed_video(project: dict[str, Any], project_folder: Path, ad_au
             "aac",
             "-b:a",
             "192k",
+            "-movflags",
+            "+faststart",
             "-shortest",
             str(output_path),
         ]
-    result = run_command(args, timeout=900)
+    result = run_command(args, timeout=ffmpeg_timeout())
     if result.returncode != 0:
         raise RuntimeError(f"Erro ao gerar vídeo final.\n{result.stderr[-4000:]}")
     return output_path
