@@ -99,7 +99,7 @@
       </section>
 
       <section class="grid-two">
-        <section class="panel video-panel">
+        <section class="panel video-panel" id="videoPanel">
           <h2>2. Revisão do vídeo</h2>
           <video id="videoPlayer" class="video" controls preload="metadata"></video>
           <div class="player-actions">
@@ -196,6 +196,10 @@
           </label>
         </div>
         <div id="transcriptPreview" class="transcript-preview" aria-live="polite"></div>
+        <details class="transcript-reader" open>
+          <summary>Transcrição completa do vídeo</summary>
+          <div id="allTranscriptList" class="transcript-full-list">Cole uma transcrição para ver todas as falas aqui.</div>
+        </details>
       </section>
 
       <section class="panel history-panel">

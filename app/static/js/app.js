@@ -52,6 +52,7 @@ const els = {
   nextPendingBtn: $('nextPendingBtn'),
   nextPauseBtn: $('nextPauseBtn'),
   markReviewedBtn: $('markReviewedBtn'),
+  videoPanel: $('videoPanel'),
   videoPlayer: $('videoPlayer'),
   back2Btn: $('back2Btn'),
   playPauseBtn: $('playPauseBtn'),
@@ -74,6 +75,7 @@ const els = {
   transcriptSearch: $('transcriptSearch'),
   transcriptContextSeconds: $('transcriptContextSeconds'),
   transcriptPreview: $('transcriptPreview'),
+  allTranscriptList: $('allTranscriptList'),
   saveTranscriptBtn: $('saveTranscriptBtn'),
   refreshHistoryBtn: $('refreshHistoryBtn'),
   historyList: $('historyList'),
@@ -570,13 +572,39 @@ function renderTranscriptBlock(title, segments) {
   return `<div class="transcript-block"><strong>${title}</strong><ul>${items}</ul></div>`;
 }
 
+function scrollToVideoPanel() {
+  if (!els.videoPanel) return;
+  els.videoPanel.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'start' });
+  els.videoPanel.classList.add('attention');
+  setTimeout(() => els.videoPanel.classList.remove('attention'), 900);
+}
+
+function scrollToTranscriptPanel() {
+  const panel = document.querySelector('.transcript-panel');
+  if (!panel) return;
+  panel.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'start' });
+}
+
+function setVideoTime(interval, shouldPlay, includePreviewMargin = false) {
+  const margin = includePreviewMargin ? Number(els.previewMargin.value || 2) : 0;
+  const start = Math.max(0, Number(interval.start || 0) - margin);
+  els.videoPlayer.currentTime = start;
+  if (shouldPlay) {
+    els.videoPlayer.play();
+  } else {
+    els.videoPlayer.pause();
+  }
+  scrollToVideoPanel();
+}
+
 function transcriptContextHtml(interval) {
+  const fullButton = '<div class="transcript-context-actions"><button class="button transcript-full-btn" type="button" data-action="transcript-full">Ver transcrição completa</button></div>';
   const transcriptText = state.project?.transcript?.text || '';
   if (!transcriptText.trim()) {
-    return '<p class="hint">Sem transcrição salva para este projeto.</p>';
+    return `<p class="hint">Sem transcrição salva para este projeto.</p>${fullButton}`;
   }
   if (!state.transcriptSegments.length) {
-    return '<p class="hint">A transcrição foi salva sem tempos reconhecíveis. Use a busca geral na seção de transcrição.</p>';
+    return `<p class="hint">A transcrição foi salva sem tempos reconhecíveis. Use a busca geral na seção de transcrição.</p>${fullButton}`;
   }
   const context = transcriptAround(interval, els.transcriptContextSeconds.value || 10);
   const html = [
@@ -584,7 +612,8 @@ function transcriptContextHtml(interval) {
     renderTranscriptBlock('Durante a pausa', context.during),
     renderTranscriptBlock('Depois da pausa', context.after),
   ].filter(Boolean).join('');
-  return html || '<p class="hint">Nenhuma fala com tempo próximo a esta pausa.</p>';
+  const content = html || '<p class="hint">Nenhuma fala com tempo próximo a esta pausa.</p>';
+  return `${content}${fullButton}`;
 }
 
 function validateVideoFile(file) {
@@ -797,6 +826,7 @@ function playSegment(interval) {
   const stopAt = Number(interval.end || 0) + margin;
   video.currentTime = start;
   video.play();
+  scrollToVideoPanel();
   const onTimeUpdate = () => {
     if (video.currentTime >= stopAt) {
       video.pause();
@@ -807,8 +837,12 @@ function playSegment(interval) {
 }
 
 function jumpToStart(interval) {
-  els.videoPlayer.currentTime = Number(interval.start || 0);
-  els.videoPlayer.play();
+  setVideoTime(interval, true, false);
+}
+
+function positionAtStart(interval) {
+  setVideoTime(interval, false, false);
+  showToast('Vídeo posicionado na pausa, sem iniciar.');
 }
 
 function renderIntervals() {
@@ -866,6 +900,7 @@ function renderIntervals() {
       <div class="interval-actions">
         <button class="button" data-action="play">Ver trecho</button>
         <button class="button" data-action="jump">Ir ao início</button>
+        <button class="button" data-action="position">Posicionar e pausar</button>
         <button class="button" data-action="mark-current">Usar como atual</button>
         <button class="button record" data-action="record">● Gravar</button>
         <button class="button" data-action="delete-recording" ${interval.recording_filename ? '' : 'disabled'}>Remover gravação</button>
@@ -900,7 +935,9 @@ function renderIntervals() {
 
     card.querySelector('[data-action="play"]').addEventListener('click', () => playSegment(interval));
     card.querySelector('[data-action="jump"]').addEventListener('click', () => jumpToStart(interval));
+    card.querySelector('[data-action="position"]').addEventListener('click', () => positionAtStart(interval));
     card.querySelector('[data-action="mark-current"]').addEventListener('click', () => goToInterval(interval.index, false));
+    card.querySelector('[data-action="transcript-full"]')?.addEventListener('click', scrollToTranscriptPanel);
     card.querySelector('[data-action="save"]').addEventListener('click', () => saveInterval(interval.index, card));
     card.querySelector('[data-action="record"]').addEventListener('click', (ev) => toggleRecording(interval.index, ev.currentTarget));
     card.querySelector('[data-action="delete-recording"]').addEventListener('click', () => deleteRecording(interval.index));
@@ -995,10 +1032,12 @@ function renderTranscriptPreview() {
   state.transcriptSegments = segments;
   if (!text.trim()) {
     els.transcriptPreview.innerHTML = '<p class="hint">Nenhuma transcrição salva ainda.</p>';
+    els.allTranscriptList.innerHTML = '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>';
     return;
   }
   if (!segments.length) {
     els.transcriptPreview.innerHTML = '<p class="hint">Texto salvo. Para mostrar contexto por pausa, use tempos como 00:01:23 ou SRT/VTT.</p>';
+    els.allTranscriptList.innerHTML = `<pre class="transcript-raw">${escapeHtml(text)}</pre>`;
     return;
   }
   const matches = segments
@@ -1006,6 +1045,7 @@ function renderTranscriptPreview() {
     .slice(0, 12);
   if (!matches.length) {
     els.transcriptPreview.innerHTML = '<p class="hint">Nenhum trecho encontrado nessa busca.</p>';
+    els.allTranscriptList.innerHTML = '<p class="hint">Nenhuma fala encontrada para essa busca.</p>';
     return;
   }
   els.transcriptPreview.innerHTML = matches.map(seg => `
@@ -1014,10 +1054,21 @@ function renderTranscriptPreview() {
       <span>${escapeHtml(seg.text)}</span>
     </button>
   `).join('');
-  els.transcriptPreview.querySelectorAll('.transcript-hit').forEach(button => {
+  const fullMatches = segments.filter(seg => !term || seg.text.toLowerCase().includes(term));
+  els.allTranscriptList.innerHTML = `
+    <div class="transcript-count">${fullMatches.length} fala(s) ${term ? 'encontrada(s)' : 'na transcrição'}.</div>
+    ${fullMatches.map(seg => `
+      <button class="transcript-hit transcript-full-hit" type="button" data-time="${seg.start}">
+        <strong>${fmt(seg.start)}${seg.end ? ` até ${fmt(seg.end)}` : ''}</strong>
+        <span>${escapeHtml(seg.text)}</span>
+      </button>
+    `).join('')}
+  `;
+  document.querySelectorAll('.transcript-hit').forEach(button => {
     button.addEventListener('click', () => {
       els.videoPlayer.currentTime = Number(button.dataset.time || 0);
-      els.videoPlayer.play();
+      els.videoPlayer.pause();
+      scrollToVideoPanel();
     });
   });
 }

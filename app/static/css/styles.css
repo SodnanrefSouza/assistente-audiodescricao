@@ -116,6 +116,10 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .header-actions { display: flex; gap: 10px; }
 .grid-two { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(330px,0.8fr); gap: 18px; }
 .video { width: 100%; max-height: 520px; background: #080b14; border-radius: var(--radius); border: 1px solid #101526; }
+.video-panel.attention {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(49,87,213,0.18);
+}
 .player-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 
 .label, label { display: block; font-weight: 700; margin: 12px 0 7px; color: #27354a; }
@@ -322,9 +326,57 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   color: var(--primary);
   font-weight: 800;
 }
+.transcript-context-actions {
+  margin-top: 10px;
+}
+.transcript-full-btn {
+  min-height: 38px;
+  padding: 8px 10px;
+}
 .transcript-block { margin-top: 10px; }
 .transcript-block ul { margin: 6px 0 0; padding-left: 18px; color: #2d3b51; }
 .transcript-block li { margin: 5px 0; }
+
+.transcript-reader {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 10px;
+}
+.transcript-reader summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 900;
+}
+.transcript-full-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.transcript-count {
+  color: var(--muted);
+  font-size: 14px;
+}
+.transcript-full-hit {
+  border-left: 4px solid var(--primary);
+}
+.transcript-raw {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcff;
+  padding: 12px;
+  max-height: 360px;
+  overflow: auto;
+  color: var(--text);
+  font: inherit;
+}
 
 .history-list { display: grid; gap: 8px; }
 .history-item {
@@ -608,6 +660,8 @@ body[data-contrast="high"] .interval-card,
 body[data-contrast="high"] .project-item,
 body[data-contrast="high"] .transcript-hit,
 body[data-contrast="high"] .transcript-context,
+body[data-contrast="high"] .transcript-reader,
+body[data-contrast="high"] .transcript-raw,
 body[data-contrast="high"] .history-item,
 body[data-contrast="high"] .file-button {
   background: #fff;
