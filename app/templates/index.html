@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assistente de Audiodescrição</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">MVP3 local</p>
+      <h1>Assistente de Audiodescrição</h1>
+      <p class="subtitle">Detecta pausas entre falas, organiza o roteiro, grava a narração e exporta arquivos para edição.</p>
+    </div>
+    <div class="status-card" id="healthStatus">
+      <span class="dot"></span>
+      <div>
+        <strong>Verificando FFmpeg...</strong>
+        <small>Obrigatório para detectar pausas e exportar áudio/vídeo.</small>
+      </div>
+    </div>
+  </header>
+
+  <section id="errorBox" class="error-box" hidden>
+    <strong id="errorTitle">Erro</strong>
+    <div id="errorMessage"></div>
+    <pre id="errorDetails" hidden></pre>
+    <button class="button" id="dismissErrorBtn">Entendi</button>
+  </section>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>1. Novo projeto</h2>
+        <label class="label" for="projectTitle">Nome do projeto</label>
+        <input id="projectTitle" class="input" type="text" placeholder="Ex.: Curta do Ícaro - versão 1">
+
+        <label class="label" for="videoFile">Vídeo</label>
+        <input id="videoFile" class="file-input" type="file" accept="video/*">
+        <button class="button primary" id="uploadBtn">Criar projeto</button>
+        <p class="hint">Tudo roda localmente no seu computador. Vídeos grandes são enviados em partes e ficam salvos em <code>data/projects</code>. O limite real depende do espaço em disco.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Projetos recentes</h2>
+        <div id="projectList" class="project-list empty">Nenhum projeto carregado ainda.</div>
+      </section>
+
+      <section class="panel help-panel">
+        <h2>Como usar</h2>
+        <ol>
+          <li>Envie um vídeo.</li>
+          <li>Clique em detectar pausas.</li>
+          <li>Revise cada intervalo no player.</li>
+          <li>Escreva ou grave a descrição.</li>
+          <li>Exporte roteiro, CSV, áudio ou vídeo final.</li>
+        </ol>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <section class="panel project-header" id="projectHeader">
+        <div>
+          <p class="eyebrow">Projeto atual</p>
+          <h2 id="currentTitle">Nenhum projeto aberto</h2>
+          <p id="currentMeta" class="muted">Crie ou abra um projeto para começar.</p>
+        </div>
+        <div class="header-actions">
+          <button class="button ghost danger" id="deleteProjectBtn" disabled>Excluir projeto</button>
+        </div>
+      </section>
+
+      <section class="grid-two">
+        <section class="panel video-panel">
+          <h2>2. Revisão do vídeo</h2>
+          <video id="videoPlayer" class="video" controls preload="metadata"></video>
+          <div class="player-actions">
+            <button class="button" id="back2Btn" disabled>⟲ Voltar 2s</button>
+            <button class="button" id="playPauseBtn" disabled>▶︎ Play/Pause</button>
+            <button class="button" id="forward2Btn" disabled>Avançar 2s ⟳</button>
+          </div>
+          <p class="hint">Dica: use os botões “Ver trecho” nos intervalos para ouvir a pausa com contexto.</p>
+        </section>
+
+        <section class="panel settings-panel">
+          <h2>3. Detectar pausas</h2>
+          <div class="form-grid">
+            <label>
+              Sensibilidade / ruído (dB)
+              <input id="noiseDb" class="input" type="number" step="1" value="-35">
+              <small>Mais negativo = mais exigente. Comece com -35.</small>
+            </label>
+            <label>
+              Duração mínima do silêncio (s)
+              <input id="minSilence" class="input" type="number" step="0.1" value="1.0">
+              <small>Evita marcar pausas muito rápidas.</small>
+            </label>
+            <label>
+              Espaço mínimo útil para AD (s)
+              <input id="minAdDuration" class="input" type="number" step="0.1" value="0.8">
+              <small>Remove intervalos pequenos demais.</small>
+            </label>
+            <label>
+              Margem antes/depois do preview (s)
+              <input id="previewMargin" class="input" type="number" step="0.5" value="2.0">
+              <small>Tempo extra para revisar o contexto.</small>
+            </label>
+          </div>
+          <details class="advanced">
+            <summary>Configurações avançadas</summary>
+            <div class="form-grid compact">
+              <label>
+                Cortar início do silêncio (s)
+                <input id="paddingStart" class="input" type="number" step="0.05" value="0.10">
+              </label>
+              <label>
+                Cortar fim do silêncio (s)
+                <input id="paddingEnd" class="input" type="number" step="0.05" value="0.10">
+              </label>
+            </div>
+          </details>
+          <button class="button primary" id="detectBtn" disabled>Detectar pausas automaticamente</button>
+          <p id="detectSummary" class="hint"></p>
+        </section>
+      </section>
+
+      <section class="panel export-panel">
+        <div>
+          <h2>4. Exportações</h2>
+          <p class="muted">Exporte roteiro, planilhas, faixa de audiodescrição ou vídeo final com a narração misturada.</p>
+        </div>
+        <div class="export-actions">
+          <button class="button" data-export="script" disabled>Roteiro .md</button>
+          <button class="button" data-export="csv" disabled>Planilha .csv</button>
+          <button class="button" data-export="srt" disabled>Roteiro .srt</button>
+          <button class="button" data-export="premiere_csv" disabled>CSV Premiere</button>
+          <button class="button" data-export="davinci_csv" disabled>CSV DaVinci</button>
+          <button class="button" data-export="json" disabled>Projeto .json</button>
+          <button class="button success" data-export="ad_audio" disabled>Faixa AD .wav</button>
+          <button class="button success" data-export="final_video" disabled>Vídeo final .mp4</button>
+        </div>
+      </section>
+
+      <section class="panel notes-panel">
+        <h2>Observações gerais do projeto</h2>
+        <textarea id="projectNotes" class="textarea" rows="3" placeholder="Ex.: revisar com Ícaro, testar se as pausas são suficientes, validar com a turma..."></textarea>
+        <button class="button" id="saveNotesBtn" disabled>Salvar observações</button>
+      </section>
+
+      <section class="panel intervals-panel">
+        <div class="intervals-header">
+          <div>
+            <h2>5. Intervalos encontrados</h2>
+            <p class="muted">Cada card representa um espaço provável para inserir audiodescrição.</p>
+          </div>
+          <div class="filters">
+            <input id="searchIntervals" class="input" placeholder="Buscar no roteiro...">
+            <select id="statusFilter" class="input">
+              <option value="">Todos os status</option>
+              <option value="pendente">Pendente</option>
+              <option value="roteirizado">Roteirizado</option>
+              <option value="gravado">Gravado</option>
+              <option value="revisado">Revisado</option>
+              <option value="descartado">Descartado</option>
+            </select>
+          </div>
+        </div>
+        <div id="intervalsContainer" class="intervals empty-state">
+          <h3>Nenhum intervalo detectado ainda.</h3>
+          <p>Abra um vídeo e clique em “Detectar pausas automaticamente”.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="loading" class="loading" hidden>
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <strong id="loadingText">Processando...</strong>
+      <small id="loadingDetail" class="loading-detail">Isso pode levar alguns minutos em vídeos longos.</small>
+      <div class="progress-wrap" aria-label="Progresso do processamento">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+      <div class="progress-row">
+        <span id="progressPercent">0%</span>
+        <span id="progressElapsed">0s</span>
+      </div>
+      <div id="loadingError" class="loading-error" hidden></div>
+      <div id="loadingActions" class="loading-actions" hidden>
+        <button class="button" id="closeLoadingBtn">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
