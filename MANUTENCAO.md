@@ -23,6 +23,7 @@ Navegador
 Flask local
   ├─ recebe vídeos e gravações
   ├─ chama FFmpeg/FFprobe
+  ├─ gera transcrição local com faster-whisper
   ├─ salva project.json
   ├─ gera CSV/SRT/JSON/MD
   └─ gera WAV/MP4 final
@@ -63,6 +64,7 @@ DELETE /api/projects/<id>         Arquiva projeto em data/trash
 GET    /api/projects/<id>/history Lista pontos do histórico
 POST   /api/projects/<id>/history/<snapshot>/restore Restaura histórico
 POST   /api/projects/<id>/transcript Salva transcrição/contexto
+POST   /api/projects/<id>/transcript/start Gera transcrição automática em segundo plano
 POST   /api/projects/<id>/detect  Detecta silêncios
 POST   /api/projects/<id>/intervals/<index>       Salva roteiro/status
 POST   /api/projects/<id>/recordings/<index>      Salva gravação
@@ -79,8 +81,16 @@ Responsável por:
 - ler duração do vídeo;
 - verificar faixa de áudio;
 - detectar silêncios;
-- gerar faixa de audiodescrição;
-- gerar vídeo final.
+- montar a faixa de audiodescrição e o vídeo final.
+
+### `app/core/transcription.py`
+
+Responsável por:
+
+- extrair áudio mono 16 kHz do vídeo com FFmpeg;
+- chamar `faster-whisper` para reconhecer as falas;
+- salvar `transcricao.srt` e `transcricao.txt` na pasta do projeto;
+- devolver texto temporizado para o painel de transcrição e para os cards de pausa.
 
 A detecção usa este conceito:
 

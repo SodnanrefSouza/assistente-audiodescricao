@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -35,6 +36,7 @@ from .core.ffmpeg_utils import (
 )
 from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, safe_filename
 from .core.timecode import parse_float
+from .core.transcription import result_to_metadata, transcribe_video
 
 
 def resource_root() -> Path:
@@ -126,6 +128,8 @@ def friendly_exception_message(exc: Exception) -> str:
         return text + "\n\nComo corrigir: nesta versão o vídeo é enviado em partes. Se esse erro aparecer, uma parte ficou grande demais. Diminua AD_ASSIST_UPLOAD_CHUNK_MB ou aumente AD_ASSIST_MAX_CHUNK_MB."
     if "permission" in lower or "permissão" in lower or "access is denied" in lower:
         return text + "\n\nComo corrigir: verifique se o vídeo não está aberto em outro programa e se a pasta do projeto permite escrita."
+    if "faster-whisper" in lower or "transcricao automatica" in lower or "transcrição automática" in lower:
+        return text + "\n\nComo corrigir: instale as dependências com .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt e tente novamente."
     return text
 
 
@@ -145,6 +149,7 @@ def create_app() -> Flask:
     upload_sessions_dir = store.data_dir / "upload_sessions"
     upload_sessions_dir.mkdir(parents=True, exist_ok=True)
     jobs = JobManager()
+    active_transcription_jobs: dict[str, str] = {}
 
     def ok(data: dict[str, Any] | None = None, **kwargs):
         payload = {"ok": True}
@@ -157,6 +162,90 @@ def create_app() -> Flask:
         payload = {"ok": False, "error": message}
         payload.update(kwargs)
         return jsonify(payload), status
+
+    def _transcript(project: dict[str, Any]) -> dict[str, Any]:
+        transcript = project.get("transcript")
+        if not isinstance(transcript, dict):
+            transcript = {}
+        project["transcript"] = transcript
+        return transcript
+
+    def _set_transcript_status(project: dict[str, Any], status: str, **extra: Any) -> None:
+        transcript = _transcript(project)
+        transcript["status"] = status
+        transcript["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        for key, value in extra.items():
+            transcript[key] = value
+
+    def _start_transcription_job(project_id: str, *, force: bool = False) -> tuple[str | None, dict[str, Any], str]:
+        project = store.load(project_id)
+        transcript = _transcript(project)
+        if (transcript.get("text") or "").strip() and not force:
+            return None, project, "Transcrição já existe para este projeto."
+
+        active_job_id = active_transcription_jobs.get(project_id)
+        active_job = jobs.get(active_job_id) if active_job_id else None
+        if active_job and active_job.get("status") == "running":
+            return active_job_id, project, "Transcrição automática já está em andamento."
+
+        job_id = jobs.create("transcript", f"Transcrever {project.get('title') or project_id}")
+        active_transcription_jobs[project_id] = job_id
+        _set_transcript_status(project, "running", source="automatic", error="", job_id=job_id)
+        store.save(project, reason="Transcrição automática iniciada")
+
+        def work() -> None:
+            try:
+                def progress(percent: float, message: str) -> None:
+                    jobs.update(
+                        job_id,
+                        percent=round(percent, 1),
+                        message="Transcrevendo vídeo...",
+                        details=message,
+                    )
+
+                fresh_project = store.load(project_id)
+                jobs.update(job_id, percent=2, message="Preparando transcrição...", details="A tarefa roda localmente no seu computador.")
+                result = transcribe_video(
+                    store.video_path(fresh_project),
+                    store.project_folder(project_id) / "transcription",
+                    duration=float(fresh_project.get("duration") or 0),
+                    progress_callback=progress,
+                )
+                fresh_project = store.load(project_id)
+                transcript_data = result_to_metadata(result)
+                transcript_data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                transcript_data["job_id"] = job_id
+                fresh_project["transcript"] = transcript_data
+                store.save(fresh_project, reason="Transcrição automática gerada")
+                jobs.update(
+                    job_id,
+                    status="done",
+                    percent=100,
+                    message="Transcrição automática concluída.",
+                    details=f"{len(result.segments)} fala(s) reconhecida(s).",
+                    result={
+                        "project": fresh_project,
+                        "message": f"Transcrição pronta: {len(result.segments)} fala(s) reconhecida(s).",
+                    },
+                )
+            except Exception as exc:
+                try:
+                    failed_project = store.load(project_id)
+                    _set_transcript_status(
+                        failed_project,
+                        "error",
+                        source="automatic",
+                        error=friendly_exception_message(exc),
+                        job_id=job_id,
+                    )
+                    store.save(failed_project, reason="Falha na transcrição automática")
+                finally:
+                    raise
+            finally:
+                active_transcription_jobs.pop(project_id, None)
+
+        jobs.run(job_id, work)
+        return job_id, project, "Transcrição automática iniciada."
 
     @app.errorhandler(413)
     def too_large(_):
@@ -202,6 +291,7 @@ def create_app() -> Flask:
             fpp = None
             ffmpeg_ok = False
             ffmpeg_message = str(exc)
+        transcription_ok = importlib.util.find_spec("faster_whisper") is not None
         return ok(
             {
                 "data_dir": str(store.data_dir),
@@ -209,6 +299,12 @@ def create_app() -> Flask:
                 "ffmpeg_message": ffmpeg_message,
                 "ffmpeg_path": ffp,
                 "ffprobe_path": fpp,
+                "transcription_ok": transcription_ok,
+                "transcription_message": (
+                    "Transcrição automática disponível."
+                    if transcription_ok
+                    else "Transcrição automática precisa instalar faster-whisper."
+                ),
                 "max_upload_mb": None,
                 "max_chunk_mb": int(os.environ.get("AD_ASSIST_MAX_CHUNK_MB", "256")),
                 "recommended_chunk_mb": int(os.environ.get("AD_ASSIST_UPLOAD_CHUNK_MB", "64")),
@@ -363,7 +459,13 @@ def create_app() -> Flask:
                 sp.unlink()
             if temp_path.exists():
                 temp_path.unlink()
-        return ok({"project": project, "message": "Projeto criado com upload fracionado."})
+        transcription_job_id, project, transcript_message = _start_transcription_job(project["id"])
+        return ok({
+            "project": project,
+            "message": "Projeto criado com upload fracionado.",
+            "transcription_job_id": transcription_job_id,
+            "transcription_message": transcript_message,
+        })
 
     @app.delete("/api/projects/upload/<upload_id>")
     def upload_cancel_route(upload_id: str):
@@ -396,7 +498,12 @@ def create_app() -> Flask:
             store.delete(project["id"])
             raise RuntimeError(f"O arquivo foi enviado, mas não conseguimos ler a duração do vídeo. {exc}")
         store.save(project, reason="Vídeo importado e duração validada")
-        return ok({"project": project})
+        transcription_job_id, project, transcript_message = _start_transcription_job(project["id"])
+        return ok({
+            "project": project,
+            "transcription_job_id": transcription_job_id,
+            "transcription_message": transcript_message,
+        })
 
     @app.get("/api/projects/<project_id>")
     def get_project(project_id: str):
@@ -426,10 +533,19 @@ def create_app() -> Flask:
         transcript = project.get("transcript") or {}
         transcript["text"] = data.get("text", "")
         transcript["source"] = data.get("source", "")
+        transcript["status"] = "done" if transcript["text"].strip() else "empty"
+        transcript["error"] = ""
         transcript["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         project["transcript"] = transcript
         store.save(project, reason="Transcrição/contexto atualizado")
         return ok({"project": project})
+
+    @app.post("/api/projects/<project_id>/transcript/start")
+    def start_project_transcription(project_id: str):
+        data = request.get_json(force=True, silent=True) or {}
+        force = bool(data.get("force"))
+        job_id, project, message = _start_transcription_job(project_id, force=force)
+        return ok({"project": project, "job_id": job_id, "message": message})
 
     @app.get("/api/projects/<project_id>/history")
     def project_history(project_id: str):

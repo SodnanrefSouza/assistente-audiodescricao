@@ -15,7 +15,8 @@ Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramen
 - Permite gravar áudio pelo navegador usando o microfone.
 - Salva cada gravação vinculada ao intervalo correto.
 - Salva edições em histórico local para reduzir risco de perda.
-- Permite colar transcrição com tempos para consultar falas antes e depois das pausas.
+- Gera transcrição automática local do vídeo com tempos usando faster-whisper.
+- Permite consultar falas antes e depois de cada pausa a partir da transcrição.
 - Avisa quando a gravação ficou maior que o espaço disponível.
 - Exporta:
   - roteiro em Markdown;
@@ -30,7 +31,6 @@ Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramen
 ## O que ele ainda não faz
 
 - Não cria a audiodescrição automaticamente por IA.
-- Não gera transcrição automática do vídeo; a transcrição pode ser colada/importada manualmente em formato com tempos.
 - Não entende o conteúdo visual da cena.
 - Não substitui revisão humana.
 - Não garante compatibilidade perfeita de CSV com todas as versões do Premiere/DaVinci, pois cada versão pode ter regras próprias de importação.
@@ -40,6 +40,7 @@ Este projeto foi pensado para a necessidade levantada com o Ícaro: uma ferramen
 
 - Python 3.10 ou superior.
 - FFmpeg e FFprobe instalados.
+- faster-whisper instalado pelas dependências do projeto para transcrição automática.
 - Navegador moderno: Chrome, Edge ou Firefox.
 - VS Code recomendado.
 
@@ -261,8 +262,24 @@ Além do upload fracionado, esta versão melhora o fluxo de trabalho para audiod
 - autosave de intervalos, observações e transcrição;
 - guia de edição com botões para próxima pausa pendente, pausa anterior/próxima e marcar revisado;
 - preferências visuais persistentes: alto contraste, texto maior e movimento reduzido;
-- painel de transcrição com busca e leitura de falas próximas de cada pausa;
+- transcrição automática local ao carregar um vídeo, com botão para tentar/refazer;
+- painel de transcrição com busca, leitura completa e falas próximas de cada pausa;
 - exportação de faixa WAV e vídeo MP4 final em tarefa de fundo, para vídeos grandes não travarem a interface.
+
+### Transcrição automática local
+
+Ao criar um projeto, o app inicia uma tarefa de transcrição em segundo plano. A transcrição fica salva em `project.json` e também em `data/projects/<id>/transcription/transcricao.srt` e `transcricao.txt`.
+
+Por padrão, o modelo usado é `small`, em CPU e `int8`, para funcionar melhor em computadores comuns. Dá para alterar por variáveis de ambiente:
+
+```powershell
+$env:AD_ASSIST_TRANSCRIBE_MODEL="medium"
+$env:AD_ASSIST_TRANSCRIBE_DEVICE="cpu"
+$env:AD_ASSIST_TRANSCRIBE_COMPUTE_TYPE="int8"
+$env:AD_ASSIST_TRANSCRIBE_LANGUAGE="pt"
+```
+
+Na primeira execução, o faster-whisper pode precisar baixar o modelo. Depois disso, a transcrição roda localmente.
 
 ### Formatos de transcrição aceitos
 

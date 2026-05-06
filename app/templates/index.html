@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260505-transcript-nav">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260505-auto-transcript">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -181,8 +181,12 @@
             <h2>Transcrição e contexto</h2>
             <p class="muted">Cole uma transcrição com tempos para consultar falas antes e depois de cada pausa.</p>
           </div>
-          <button class="button" id="saveTranscriptBtn" disabled>Salvar transcrição</button>
+          <div class="transcript-actions">
+            <button class="button primary" id="transcribeBtn" disabled>Gerar transcrição automática</button>
+            <button class="button" id="saveTranscriptBtn" disabled>Salvar transcrição</button>
+          </div>
         </div>
+        <div id="transcriptStatus" class="transcript-status" aria-live="polite">Abra um projeto para gerar a transcrição do vídeo.</div>
         <label class="label" for="transcriptText">Texto da transcrição</label>
         <textarea id="transcriptText" class="textarea transcript-textarea" rows="5" placeholder="Aceita SRT/VTT ou linhas como 00:01:23 fala do vídeo..."></textarea>
         <div class="transcript-tools">
@@ -259,6 +263,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260505-transcript-nav"></script>
+  <script src="/static/js/app.js?v=20260505-auto-transcript"></script>
 </body>
 </html>

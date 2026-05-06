@@ -27,6 +27,9 @@ const state = {
   transcriptSaveTimer: null,
   notesSaveTimer: null,
   transcriptSegments: [],
+  transcriptionAvailable: false,
+  activeTranscriptJob: null,
+  autoTranscriptionProjects: new Set(),
   visualPrefs: readVisualPrefs(),
 };
 
@@ -80,6 +83,8 @@ const els = {
   transcriptContextSeconds: $('transcriptContextSeconds'),
   transcriptPreview: $('transcriptPreview'),
   allTranscriptList: $('allTranscriptList'),
+  transcribeBtn: $('transcribeBtn'),
+  transcriptStatus: $('transcriptStatus'),
   saveTranscriptBtn: $('saveTranscriptBtn'),
   refreshHistoryBtn: $('refreshHistoryBtn'),
   historyList: $('historyList'),
@@ -269,15 +274,153 @@ async function checkHealth() {
     state.maxUploadMb = res.max_upload_mb || null;
     state.maxChunkMb = res.max_chunk_mb || 256;
     state.recommendedChunkMb = res.recommended_chunk_mb || 64;
+    state.transcriptionAvailable = !!res.transcription_ok;
     els.healthStatus.classList.toggle('ok', !!res.ffmpeg_ok);
     els.healthStatus.classList.toggle('bad', !res.ffmpeg_ok);
     els.healthStatus.querySelector('strong').textContent = res.ffmpeg_ok ? 'FFmpeg pronto' : 'FFmpeg não encontrado';
-    els.healthStatus.querySelector('small').textContent = res.ffmpeg_ok ? 'Detecção e exportações disponíveis.' : res.ffmpeg_message;
+    els.healthStatus.querySelector('small').textContent = res.ffmpeg_ok
+      ? (res.transcription_ok
+        ? 'Transcrição automática, detecção e exportações disponíveis.'
+        : 'Detecção e exportações disponíveis. Transcrição automática precisa instalar dependências.')
+      : res.ffmpeg_message;
   } catch (err) {
+    state.transcriptionAvailable = false;
     els.healthStatus.classList.add('bad');
     els.healthStatus.querySelector('strong').textContent = 'Erro ao verificar ambiente';
     els.healthStatus.querySelector('small').textContent = err.message;
   }
+}
+
+function updateTranscriptStatus(job = null) {
+  if (!els.transcriptStatus || !els.transcribeBtn) return;
+  const project = state.project;
+  if (!project) {
+    els.transcribeBtn.disabled = true;
+    els.transcribeBtn.textContent = 'Gerar transcrição automática';
+    els.transcriptStatus.dataset.state = '';
+    els.transcriptStatus.textContent = 'Abra um projeto para gerar a transcrição do vídeo.';
+    return;
+  }
+
+  const transcript = project.transcript || {};
+  const text = transcript.text || '';
+  const status = job ? 'running' : (transcript.status || (text.trim() ? 'done' : 'empty'));
+  els.transcriptStatus.dataset.state = status;
+
+  if (job) {
+    els.transcribeBtn.disabled = true;
+    els.transcribeBtn.textContent = 'Transcrevendo...';
+    const percent = Math.round(Number(job.percent || 0));
+    els.transcriptStatus.textContent = `${percent}% - ${job.details || job.message || 'Transcrição automática em andamento.'}`;
+    return;
+  }
+
+  if (status === 'running') {
+    els.transcribeBtn.disabled = true;
+    els.transcribeBtn.textContent = 'Transcrevendo...';
+    els.transcriptStatus.textContent = 'Transcrição automática em andamento. Você pode continuar revisando o projeto enquanto ela roda.';
+    return;
+  }
+
+  if (status === 'done' && text.trim()) {
+    els.transcribeBtn.disabled = false;
+    els.transcribeBtn.textContent = 'Refazer transcrição automática';
+    const count = Number(transcript.segment_count || state.transcriptSegments.length || 0);
+    const origin = transcript.source === 'automatic' ? 'automática' : 'manual';
+    els.transcriptStatus.textContent = `Transcrição ${origin} pronta${count ? `: ${count} fala(s) com tempo.` : '.'}`;
+    return;
+  }
+
+  if (status === 'error') {
+    els.transcribeBtn.disabled = false;
+    els.transcribeBtn.textContent = 'Tentar transcrever novamente';
+    els.transcriptStatus.textContent = transcript.error || 'A transcrição automática falhou. Confira as dependências e tente novamente.';
+    return;
+  }
+
+  els.transcribeBtn.disabled = false;
+  els.transcribeBtn.textContent = 'Gerar transcrição automática';
+  els.transcriptStatus.textContent = state.transcriptionAvailable
+    ? 'A transcrição automática começa ao carregar um vídeo. Você também pode iniciar manualmente aqui.'
+    : 'A transcrição automática precisa do faster-whisper instalado no ambiente do app.';
+}
+
+async function pollTranscriptJob(jobId) {
+  if (!jobId) return;
+  state.activeTranscriptJob = jobId;
+  try {
+    while (state.activeTranscriptJob === jobId) {
+      const res = await api(`/api/jobs/${jobId}`);
+      const job = res.job;
+      updateTranscriptStatus(job);
+      if (job.status === 'done') {
+        state.activeTranscriptJob = null;
+        if (job.result?.project) {
+          setProject(job.result.project);
+        }
+        await loadProjects();
+        showToast(job.result?.message || 'Transcrição automática concluída.');
+        return;
+      }
+      if (job.status === 'error') {
+        state.activeTranscriptJob = null;
+        if (state.project) {
+          try {
+            const fresh = await api(`/api/projects/${state.project.id}`);
+            setProject(fresh.project);
+          } catch (_) {
+            updateTranscriptStatus();
+          }
+        }
+        showError('Erro ao transcrever vídeo', job.error || 'Não foi possível gerar a transcrição.');
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  } catch (err) {
+    state.activeTranscriptJob = null;
+    updateTranscriptStatus();
+    showError('Erro ao acompanhar transcrição', err.message);
+  }
+}
+
+async function startAutomaticTranscription({ force = false, silent = false, jobId = null } = {}) {
+  if (!state.project) return;
+  if (jobId) {
+    pollTranscriptJob(jobId);
+    return;
+  }
+  if (state.activeTranscriptJob) return;
+  if (force && (state.project.transcript?.text || '').trim()) {
+    const confirmed = confirm('Refazer a transcrição automática? O texto atual será substituído pela nova transcrição.');
+    if (!confirmed) return;
+  }
+  try {
+    const res = await api(`/api/projects/${state.project.id}/transcript/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    });
+    setProject(res.project);
+    if (res.job_id) {
+      if (!silent) showToast(res.message || 'Transcrição automática iniciada.');
+      pollTranscriptJob(res.job_id);
+    } else if (!silent) {
+      showToast(res.message || 'Transcrição já está pronta.');
+    }
+  } catch (err) {
+    showError('Erro ao iniciar transcrição', err.message);
+  }
+}
+
+function maybeStartAutoTranscription() {
+  const project = state.project;
+  if (!project || state.autoTranscriptionProjects.has(project.id)) return;
+  const transcript = project.transcript || {};
+  const status = transcript.status || '';
+  if ((transcript.text || '').trim() || ['running', 'done', 'error'].includes(status)) return;
+  state.autoTranscriptionProjects.add(project.id);
+  startAutomaticTranscription({ silent: true });
 }
 
 async function loadProjects() {
@@ -385,6 +528,7 @@ async function openProject(projectId) {
     const res = await api(`/api/projects/${projectId}`);
     setProgress(100, 'Projeto carregado.');
     setProject(res.project);
+    maybeStartAutoTranscription();
     showToast('Projeto aberto.');
   } catch (err) {
     showError('Erro ao abrir projeto', err.message);
@@ -419,6 +563,7 @@ function setProject(project) {
   els.paddingEnd.value = s.padding_end ?? 0.10;
   els.exportButtons.forEach(btn => btn.disabled = false);
   updateWorkflowPanel();
+  updateTranscriptStatus();
   renderTranscriptPreview();
   renderIntervals();
   loadHistory();
@@ -439,6 +584,7 @@ function clearProject() {
   els.forward2Btn.disabled = true;
   els.saveNotesBtn.disabled = true;
   els.saveTranscriptBtn.disabled = true;
+  els.transcribeBtn.disabled = true;
   els.refreshHistoryBtn.disabled = true;
   els.prevPauseBtn.disabled = true;
   els.nextPendingBtn.disabled = true;
@@ -449,6 +595,7 @@ function clearProject() {
   els.transcriptText.value = '';
   setHtml(els.transcriptPreview, '');
   setHtml(els.allTranscriptList, '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>');
+  updateTranscriptStatus();
   els.historyList.className = 'history-list empty';
   els.historyList.textContent = 'Abra um projeto para ver o histórico.';
   updateWorkflowPanel();
@@ -604,9 +751,16 @@ function setVideoTime(interval, shouldPlay, includePreviewMargin = false) {
 
 function transcriptContextHtml(interval) {
   const fullButton = '<div class="transcript-context-actions"><button class="button transcript-full-btn" type="button" data-action="transcript-full">Ver transcrição completa</button></div>';
-  const transcriptText = state.project?.transcript?.text || '';
+  const transcript = state.project?.transcript || {};
+  const transcriptText = transcript.text || '';
   if (!transcriptText.trim()) {
-    return `<p class="hint">Sem transcrição salva para este projeto.</p>${fullButton}`;
+    if (transcript.status === 'running') {
+      return `<p class="hint">A transcrição automática ainda está rodando. Quando terminar, este card mostrará as falas antes e depois da pausa.</p>${fullButton}`;
+    }
+    if (transcript.status === 'error') {
+      return `<p class="hint">A transcrição automática falhou. Use o painel de transcrição para tentar novamente.</p>${fullButton}`;
+    }
+    return `<p class="hint">Sem transcrição salva para este projeto. O app tenta gerar automaticamente ao carregar o vídeo.</p>${fullButton}`;
   }
   if (!state.transcriptSegments.length) {
     return `<p class="hint">A transcrição foi salva sem tempos reconhecíveis. Use a busca geral na seção de transcrição.</p>${fullButton}`;
@@ -745,8 +899,13 @@ async function uploadProject() {
     const res = await uploadProjectInChunks(file, title);
     setProgress(100, 'Projeto criado com sucesso.');
     setProject(res.project);
+    if (res.transcription_job_id) {
+      startAutomaticTranscription({ jobId: res.transcription_job_id, silent: true });
+    } else {
+      maybeStartAutoTranscription();
+    }
     await loadProjects();
-    showToast('Projeto criado com sucesso.');
+    showToast(res.transcription_job_id ? 'Projeto criado. Transcrição automática iniciada.' : 'Projeto criado com sucesso.');
   } catch (err) {
     await cancelCurrentUploadSilently();
     setLoadingError(err.message);
@@ -1250,6 +1409,10 @@ function bindEvents() {
   els.videoFile.addEventListener('change', updateSelectedFileName);
   els.uploadBtn.addEventListener('click', uploadProject);
   els.detectBtn.addEventListener('click', detectSilences);
+  els.transcribeBtn.addEventListener('click', () => {
+    const force = !!(state.project?.transcript?.text || '').trim();
+    startAutomaticTranscription({ force });
+  });
   els.deleteProjectBtn.addEventListener('click', deleteCurrentProject);
   els.saveNotesBtn.addEventListener('click', saveNotes);
   els.projectNotes.addEventListener('input', () => {

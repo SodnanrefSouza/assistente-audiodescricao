@@ -290,6 +290,37 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 
 .transcript-panel .section-header,
 .history-panel .section-header { margin-bottom: 12px; }
+.transcript-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.transcript-status {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7faff;
+  color: var(--muted);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.transcript-status[data-state="running"] {
+  border-color: #b9c8ff;
+  color: var(--primary);
+  background: #eef3ff;
+}
+.transcript-status[data-state="done"] {
+  border-color: #bfe6d1;
+  color: var(--success);
+  background: #f0fff7;
+}
+.transcript-status[data-state="error"] {
+  border-color: #ffc9c9;
+  color: var(--danger);
+  background: #fff5f5;
+}
 .transcript-textarea { min-height: 130px; }
 .transcript-tools {
   display: grid;
@@ -661,6 +692,7 @@ body[data-contrast="high"] .project-item,
 body[data-contrast="high"] .transcript-hit,
 body[data-contrast="high"] .transcript-context,
 body[data-contrast="high"] .transcript-reader,
+body[data-contrast="high"] .transcript-status,
 body[data-contrast="high"] .transcript-raw,
 body[data-contrast="high"] .history-item,
 body[data-contrast="high"] .file-button {
