@@ -32,6 +32,10 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+function setHtml(element, html) {
+  if (element) element.innerHTML = html;
+}
+
 const els = {
   healthStatus: $('healthStatus'),
   contrastToggle: $('contrastToggle'),
@@ -443,7 +447,8 @@ function clearProject() {
   els.exportButtons.forEach(btn => btn.disabled = true);
   els.projectNotes.value = '';
   els.transcriptText.value = '';
-  els.transcriptPreview.innerHTML = '';
+  setHtml(els.transcriptPreview, '');
+  setHtml(els.allTranscriptList, '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>');
   els.historyList.className = 'history-list empty';
   els.historyList.textContent = 'Abra um projeto para ver o histórico.';
   updateWorkflowPanel();
@@ -1031,31 +1036,31 @@ function renderTranscriptPreview() {
   const segments = parseTranscript(text);
   state.transcriptSegments = segments;
   if (!text.trim()) {
-    els.transcriptPreview.innerHTML = '<p class="hint">Nenhuma transcrição salva ainda.</p>';
-    els.allTranscriptList.innerHTML = '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>';
+    setHtml(els.transcriptPreview, '<p class="hint">Nenhuma transcrição salva ainda.</p>');
+    setHtml(els.allTranscriptList, '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>');
     return;
   }
   if (!segments.length) {
-    els.transcriptPreview.innerHTML = '<p class="hint">Texto salvo. Para mostrar contexto por pausa, use tempos como 00:01:23 ou SRT/VTT.</p>';
-    els.allTranscriptList.innerHTML = `<pre class="transcript-raw">${escapeHtml(text)}</pre>`;
+    setHtml(els.transcriptPreview, '<p class="hint">Texto salvo. Para mostrar contexto por pausa, use tempos como 00:01:23 ou SRT/VTT.</p>');
+    setHtml(els.allTranscriptList, `<pre class="transcript-raw">${escapeHtml(text)}</pre>`);
     return;
   }
   const matches = segments
     .filter(seg => !term || seg.text.toLowerCase().includes(term))
     .slice(0, 12);
   if (!matches.length) {
-    els.transcriptPreview.innerHTML = '<p class="hint">Nenhum trecho encontrado nessa busca.</p>';
-    els.allTranscriptList.innerHTML = '<p class="hint">Nenhuma fala encontrada para essa busca.</p>';
+    setHtml(els.transcriptPreview, '<p class="hint">Nenhum trecho encontrado nessa busca.</p>');
+    setHtml(els.allTranscriptList, '<p class="hint">Nenhuma fala encontrada para essa busca.</p>');
     return;
   }
-  els.transcriptPreview.innerHTML = matches.map(seg => `
+  setHtml(els.transcriptPreview, matches.map(seg => `
     <button class="transcript-hit" type="button" data-time="${seg.start}">
       <strong>${fmt(seg.start)}</strong>
       <span>${escapeHtml(seg.text)}</span>
     </button>
-  `).join('');
+  `).join(''));
   const fullMatches = segments.filter(seg => !term || seg.text.toLowerCase().includes(term));
-  els.allTranscriptList.innerHTML = `
+  setHtml(els.allTranscriptList, `
     <div class="transcript-count">${fullMatches.length} fala(s) ${term ? 'encontrada(s)' : 'na transcrição'}.</div>
     ${fullMatches.map(seg => `
       <button class="transcript-hit transcript-full-hit" type="button" data-time="${seg.start}">
@@ -1063,7 +1068,7 @@ function renderTranscriptPreview() {
         <span>${escapeHtml(seg.text)}</span>
       </button>
     `).join('')}
-  `;
+  `);
   document.querySelectorAll('.transcript-hit').forEach(button => {
     button.addEventListener('click', () => {
       els.videoPlayer.currentTime = Number(button.dataset.time || 0);
