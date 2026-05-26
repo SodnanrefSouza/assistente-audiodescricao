@@ -171,6 +171,136 @@ def _progress_seconds_from_line(line: str) -> float | None:
     return None
 
 
+def _safe_audio_db(value: str) -> float:
+    value = (value or "").strip().lower()
+    if value in {"-inf", "inf", "+inf", "nan"}:
+        return -120.0
+    try:
+        parsed = float(value)
+    except ValueError:
+        return -120.0
+    if parsed != parsed:
+        return -120.0
+    return max(-120.0, min(20.0, parsed))
+
+
+def _parse_rms_samples(output: str) -> list[tuple[float, float]]:
+    """Extrai amostras de RMS geradas por astats/ametadata.
+
+    O FFmpeg imprime o tempo da amostra em uma linha e o RMS em outra. Guardamos o
+    ultimo pts_time visto e associamos ao proximo RMS encontrado.
+    """
+    samples: list[tuple[float, float]] = []
+    current_time: float | None = None
+    time_re = re.compile(r"pts_time:([-+0-9.]+)")
+    rms_re = re.compile(r"lavfi\.astats\.Overall\.RMS_level=([^\s]+)")
+
+    for line in output.splitlines():
+        time_match = time_re.search(line)
+        if time_match:
+            try:
+                current_time = float(time_match.group(1))
+            except ValueError:
+                current_time = None
+            continue
+        rms_match = rms_re.search(line)
+        if rms_match and current_time is not None:
+            samples.append((current_time, _safe_audio_db(rms_match.group(1))))
+    return samples
+
+
+def _classify_audio_background(values: list[float], noise_db: float) -> dict[str, Any]:
+    if not values:
+        return {
+            "state": "unknown",
+            "label": "fundo nao analisado",
+            "detail": "Rode a deteccao novamente para medir se a pausa tem silencio puro ou fundo baixo.",
+            "rms_db": None,
+            "peak_db": None,
+            "sample_count": 0,
+        }
+
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+    peak = max(values)
+    rms = sum(values) / len(values)
+
+    if median <= -75 and peak <= -55:
+        state = "quiet"
+        label = "silencio quase puro"
+        detail = "A pausa ficou com volume muito baixo. E a melhor candidata tecnica para gravar, se tambem nao houver fala."
+    elif median <= noise_db + 8 and peak <= noise_db + 18:
+        state = "low_background"
+        label = "fundo baixo possivel"
+        detail = "Ha som baixo na pausa. Pode ser musica, trilha, ambiente ou ruido; ouca antes de gravar."
+    else:
+        state = "active_background"
+        label = "fundo audivel"
+        detail = "O audio nao parece silencio limpo. Pode haver musica, trilha, ambiente ou fala fraca; revise com cuidado."
+
+    return {
+        "state": state,
+        "label": label,
+        "detail": detail,
+        "rms_db": round(rms, 1),
+        "median_db": round(median, 1),
+        "peak_db": round(peak, 1),
+        "sample_count": len(values),
+    }
+
+
+def annotate_audio_background(
+    media_path: Path,
+    intervals: list[dict[str, Any]],
+    noise_db: float,
+    *,
+    sample_seconds: float = 0.5,
+) -> list[dict[str, Any]]:
+    """Anota se a pausa parece silencio limpo ou fundo audivel.
+
+    Isto nao e reconhecimento semantico de musica. A analise mede energia/RMS do
+    audio em janelas curtas; fala de personagem continua sendo decidida pela
+    checagem de voz/transcricao.
+    """
+    if not intervals:
+        return intervals
+
+    samples_per_chunk = max(800, int(16000 * max(0.1, sample_seconds)))
+    args = [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-nostdin",
+        "-i",
+        str(media_path),
+        "-vn",
+        "-af",
+        f"aresample=16000,aformat=channel_layouts=mono,asetnsamples=n={samples_per_chunk}:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+        "-f",
+        "null",
+        "-",
+    ]
+    result = run_command(args, timeout=ffmpeg_timeout())
+    output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    samples = _parse_rms_samples(output)
+
+    for interval in intervals:
+        start = float(interval.get("start") or interval.get("silence_start") or 0)
+        end = float(interval.get("end") or interval.get("silence_end") or start)
+        values = [rms for t, rms in samples if start <= t <= end]
+        classified = _classify_audio_background(values, noise_db)
+        interval["background_state"] = classified["state"]
+        interval["background_label"] = classified["label"]
+        interval["background_detail"] = classified["detail"]
+        interval["background_rms_db"] = classified.get("rms_db")
+        interval["background_median_db"] = classified.get("median_db")
+        interval["background_peak_db"] = classified.get("peak_db")
+        interval["background_sample_count"] = classified.get("sample_count", 0)
+        interval["background_method"] = "ffmpeg_astats_rms"
+        interval["background_noise_db"] = noise_db
+    return intervals
+
+
 def _build_intervals_from_output(
     output: str,
     duration: float,
@@ -327,7 +457,7 @@ def detect_silences_with_progress(
     if returncode != 0 and "silence_" not in output:
         raise RuntimeError(f"Erro ao detectar silêncios.\n{output[-4000:]}")
 
-    notify(97, "Organizando os intervalos encontrados...")
+    notify(96, "Organizando os intervalos encontrados...")
     intervals = _build_intervals_from_output(
         output,
         duration=duration,
@@ -335,6 +465,17 @@ def detect_silences_with_progress(
         padding_start=padding_start,
         padding_end=padding_end,
     )
+    notify(98, "Medindo se as pausas tem silencio limpo ou fundo audivel...")
+    try:
+        intervals = annotate_audio_background(media_path, intervals, noise_db)
+    except Exception:
+        for interval in intervals:
+            interval["background_state"] = "unknown"
+            interval["background_label"] = "fundo nao analisado"
+            interval["background_detail"] = "Nao foi possivel medir o fundo desta pausa. Revise no video antes de gravar."
+            interval["background_sample_count"] = 0
+            interval["background_method"] = "ffmpeg_astats_rms"
+            interval["background_noise_db"] = noise_db
     notify(100, f"Detecção concluída: {len(intervals)} intervalos encontrados.")
     return intervals
 

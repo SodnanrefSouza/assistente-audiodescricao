@@ -2,6 +2,21 @@
 
 Esta versão foi ajustada para vídeos grandes e para um fluxo de edição mais seguro.
 
+## Ajustes após teste do grupo - 25/05
+
+- Os botões do guia de edição agora reproduzem apenas o trecho da pausa e param no final, como já acontecia no botão "Ver trecho" dos cards.
+- O salto para trechos distantes do vídeo foi ajustado para pausar, reposicionar e só então tocar, reduzindo travadas no player.
+- A transcrição ficou recolhida como recurso opcional, para não pesar na interface principal.
+- As configurações de ruído e tempo mínimo foram descritas com exemplos mais claros.
+- Os cards avisam quando a transcrição temporizada indica fala dentro de uma pausa sugerida.
+- A transcrição automática passou a detectar o idioma por padrão, em vez de forçar português.
+- A tela ganhou uma linha do tempo clicável para revisar as pausas visualmente, sem depender só dos cards.
+- Foi adicionado o painel "Fala x trilha sonora", separando voz encontrada na transcrição dos trechos de som baixo/trilha/ambiente marcados pelo FFmpeg.
+- Foi criado um teste automático de fumaça em `scripts/smoke_test.py` para checar tela inicial, saúde do app e sintaxe do JavaScript.
+- A linha do tempo agora agrupa muitos intervalos em blocos clicáveis, evitando a faixa poluída quando um vídeo tem centenas de pausas.
+- A área explícita de transcrição foi escondida da interface; o app mostra apenas o resultado útil de voz/fundo.
+- A detecção de pausas agora mede também o fundo de áudio por RMS/FFmpeg, separando silêncio quase puro, fundo baixo possível e fundo audível. Isso ajuda a diferenciar ausência de fala de trechos com música, trilha, ambiente ou ruído que precisam ser ouvidos antes de gravar.
+
 ## O que mudou
 
 - Removido o limite fixo de tamanho total do vídeo.

@@ -181,17 +181,17 @@ def create_app() -> Flask:
         project = store.load(project_id)
         transcript = _transcript(project)
         if (transcript.get("text") or "").strip() and not force:
-            return None, project, "Transcrição já existe para este projeto."
+            return None, project, "Checagem de voz já existe para este projeto."
 
         active_job_id = active_transcription_jobs.get(project_id)
         active_job = jobs.get(active_job_id) if active_job_id else None
         if active_job and active_job.get("status") == "running":
-            return active_job_id, project, "Transcrição automática já está em andamento."
+            return active_job_id, project, "Checagem de voz já está em andamento."
 
-        job_id = jobs.create("transcript", f"Transcrever {project.get('title') or project_id}")
+        job_id = jobs.create("transcript", f"Checar voz {project.get('title') or project_id}")
         active_transcription_jobs[project_id] = job_id
         _set_transcript_status(project, "running", source="automatic", error="", job_id=job_id)
-        store.save(project, reason="Transcrição automática iniciada")
+        store.save(project, reason="Checagem de voz iniciada")
 
         def work() -> None:
             try:
@@ -199,12 +199,12 @@ def create_app() -> Flask:
                     jobs.update(
                         job_id,
                         percent=round(percent, 1),
-                        message="Transcrevendo vídeo...",
+                        message="Checando voz do vídeo...",
                         details=message,
                     )
 
                 fresh_project = store.load(project_id)
-                jobs.update(job_id, percent=2, message="Preparando transcrição...", details="A tarefa roda localmente no seu computador.")
+                jobs.update(job_id, percent=2, message="Preparando checagem de voz...", details="A tarefa roda localmente no seu computador.")
                 result = transcribe_video(
                     store.video_path(fresh_project),
                     store.project_folder(project_id) / "transcription",
@@ -216,16 +216,16 @@ def create_app() -> Flask:
                 transcript_data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 transcript_data["job_id"] = job_id
                 fresh_project["transcript"] = transcript_data
-                store.save(fresh_project, reason="Transcrição automática gerada")
+                store.save(fresh_project, reason="Checagem de voz gerada")
                 jobs.update(
                     job_id,
                     status="done",
                     percent=100,
-                    message="Transcrição automática concluída.",
+                    message="Checagem de voz concluída.",
                     details=f"{len(result.segments)} fala(s) reconhecida(s).",
                     result={
                         "project": fresh_project,
-                        "message": f"Transcrição pronta: {len(result.segments)} fala(s) reconhecida(s).",
+                        "message": f"Checagem de voz pronta: {len(result.segments)} fala(s) reconhecida(s).",
                     },
                 )
             except Exception as exc:
@@ -238,14 +238,14 @@ def create_app() -> Flask:
                         error=friendly_exception_message(exc),
                         job_id=job_id,
                     )
-                    store.save(failed_project, reason="Falha na transcrição automática")
+                    store.save(failed_project, reason="Falha na checagem de voz")
                 finally:
                     raise
             finally:
                 active_transcription_jobs.pop(project_id, None)
 
         jobs.run(job_id, work)
-        return job_id, project, "Transcrição automática iniciada."
+        return job_id, project, "Checagem de voz iniciada."
 
     @app.errorhandler(413)
     def too_large(_):
@@ -301,9 +301,9 @@ def create_app() -> Flask:
                 "ffprobe_path": fpp,
                 "transcription_ok": transcription_ok,
                 "transcription_message": (
-                    "Transcrição automática disponível."
+                    "Checagem de voz disponível."
                     if transcription_ok
-                    else "Transcrição automática precisa instalar faster-whisper."
+                    else "Checagem de voz precisa instalar faster-whisper."
                 ),
                 "max_upload_mb": None,
                 "max_chunk_mb": int(os.environ.get("AD_ASSIST_MAX_CHUNK_MB", "256")),
@@ -537,7 +537,7 @@ def create_app() -> Flask:
         transcript["error"] = ""
         transcript["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         project["transcript"] = transcript
-        store.save(project, reason="Transcrição/contexto atualizado")
+        store.save(project, reason="Checagem de voz atualizada")
         return ok({"project": project})
 
     @app.post("/api/projects/<project_id>/transcript/start")

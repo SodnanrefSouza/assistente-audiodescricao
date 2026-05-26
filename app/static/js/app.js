@@ -23,6 +23,9 @@ const state = {
   maxChunkMb: 256,
   currentUploadId: null,
   currentIntervalIndex: null,
+  timelineSelectedGroupIndex: null,
+  intervalPage: 1,
+  intervalPageSize: 24,
   intervalSaveTimers: new Map(),
   transcriptSaveTimer: null,
   notesSaveTimer: null,
@@ -30,6 +33,7 @@ const state = {
   transcriptionAvailable: false,
   activeTranscriptJob: null,
   autoTranscriptionProjects: new Set(),
+  segmentPreviewStopper: null,
   visualPrefs: readVisualPrefs(),
 };
 
@@ -61,6 +65,10 @@ const els = {
   markReviewedBtn: $('markReviewedBtn'),
   videoPanel: $('videoPanel'),
   videoPlayer: $('videoPlayer'),
+  playbackSpeed: $('playbackSpeed'),
+  timelineTrack: $('timelineTrack'),
+  timelineStatus: $('timelineStatus'),
+  audioInsightPanel: $('audioInsightPanel'),
   back2Btn: $('back2Btn'),
   playPauseBtn: $('playPauseBtn'),
   forward2Btn: $('forward2Btn'),
@@ -74,6 +82,7 @@ const els = {
   detectSummary: $('detectSummary'),
   exportButtons: Array.from(document.querySelectorAll('[data-export]')),
   intervalsContainer: $('intervalsContainer'),
+  intervalPager: $('intervalPager'),
   searchIntervals: $('searchIntervals'),
   statusFilter: $('statusFilter'),
   projectNotes: $('projectNotes'),
@@ -279,9 +288,7 @@ async function checkHealth() {
     els.healthStatus.classList.toggle('bad', !res.ffmpeg_ok);
     els.healthStatus.querySelector('strong').textContent = res.ffmpeg_ok ? 'FFmpeg pronto' : 'FFmpeg não encontrado';
     els.healthStatus.querySelector('small').textContent = res.ffmpeg_ok
-      ? (res.transcription_ok
-        ? 'Transcrição automática, detecção e exportações disponíveis.'
-        : 'Detecção e exportações disponíveis. Transcrição automática precisa instalar dependências.')
+      ? 'Detecção, checagem de voz e exportações disponíveis.'
       : res.ffmpeg_message;
   } catch (err) {
     state.transcriptionAvailable = false;
@@ -359,7 +366,7 @@ async function pollTranscriptJob(jobId) {
           setProject(job.result.project);
         }
         await loadProjects();
-        showToast(job.result?.message || 'Transcrição automática concluída.');
+        showToast(job.result?.message || 'Checagem de voz concluída.');
         return;
       }
       if (job.status === 'error') {
@@ -372,7 +379,7 @@ async function pollTranscriptJob(jobId) {
             updateTranscriptStatus();
           }
         }
-        showError('Erro ao transcrever vídeo', job.error || 'Não foi possível gerar a transcrição.');
+        showError('Erro na checagem de voz', job.error || 'Não foi possível concluir a checagem de voz.');
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 1200));
@@ -392,7 +399,7 @@ async function startAutomaticTranscription({ force = false, silent = false, jobI
   }
   if (state.activeTranscriptJob) return;
   if (force && (state.project.transcript?.text || '').trim()) {
-    const confirmed = confirm('Refazer a transcrição automática? O texto atual será substituído pela nova transcrição.');
+    const confirmed = confirm('Refazer a checagem de voz? O resultado atual será substituído.');
     if (!confirmed) return;
   }
   try {
@@ -403,13 +410,13 @@ async function startAutomaticTranscription({ force = false, silent = false, jobI
     });
     setProject(res.project);
     if (res.job_id) {
-      if (!silent) showToast(res.message || 'Transcrição automática iniciada.');
+      if (!silent) showToast(res.message || 'Checagem de voz iniciada.');
       pollTranscriptJob(res.job_id);
     } else if (!silent) {
-      showToast(res.message || 'Transcrição já está pronta.');
+      showToast(res.message || 'Checagem de voz já está pronta.');
     }
   } catch (err) {
-    showError('Erro ao iniciar transcrição', err.message);
+    showError('Erro ao iniciar checagem de voz', err.message);
   }
 }
 
@@ -453,35 +460,66 @@ function renderProjectList(projects) {
   });
 }
 
+function filteredIntervalList() {
+  const intervals = state.project?.intervals || [];
+  const term = (els.searchIntervals?.value || '').toLowerCase().trim();
+  const status = els.statusFilter?.value || '';
+  return intervals.filter(interval => {
+    const text = `${interval.title || ''} ${interval.script || ''} ${interval.notes || ''}`.toLowerCase();
+    const matchesTerm = !term || text.includes(term);
+    const matchesStatus = !status || interval.status === status;
+    return matchesTerm && matchesStatus;
+  });
+}
+
+function pageForInterval(index, intervals = filteredIntervalList()) {
+  const position = intervals.findIndex(item => Number(item.index) === Number(index));
+  if (position < 0) return null;
+  return Math.floor(position / Math.max(1, Number(state.intervalPageSize || 24))) + 1;
+}
+
 function visibleIntervalIndexes() {
   return Array.from(els.intervalsContainer.querySelectorAll('.interval-card'))
     .map(card => Number(card.id.replace('interval-', '')))
     .filter(Boolean);
 }
 
-function goToInterval(index, autoplay = true) {
-  if (!state.project) return;
-  const interval = (state.project.intervals || []).find(item => item.index === index);
-  if (!interval) return;
-  state.currentIntervalIndex = index;
-  const visible = visibleIntervalIndexes();
-  if (!visible.includes(index)) {
+function showIntervalPage(index, clearFilters = false) {
+  let filtered = filteredIntervalList();
+  if (!filtered.some(item => Number(item.index) === Number(index))) {
+    if (!clearFilters) return false;
     els.searchIntervals.value = '';
     els.statusFilter.value = '';
-    renderIntervals();
+    filtered = filteredIntervalList();
+  }
+  const page = pageForInterval(index, filtered);
+  if (page) state.intervalPage = page;
+  renderIntervals();
+  return !!page;
+}
+
+function goToInterval(index, autoplay = true) {
+  if (!state.project) return;
+  const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
+  if (!interval) return;
+  state.currentIntervalIndex = interval.index;
+  const visible = visibleIntervalIndexes();
+  if (!visible.includes(Number(index))) {
+    showIntervalPage(index, true);
   } else {
     document.querySelectorAll('.interval-card.current').forEach(card => card.classList.remove('current'));
     document.getElementById(`interval-${index}`)?.classList.add('current');
   }
   const card = document.getElementById(`interval-${index}`);
   if (card) {
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
     card.focus({ preventScroll: true });
   }
-  if (autoplay) jumpToStart(interval);
+  if (autoplay) playSegment(interval);
   updateWorkflowPanel();
+  renderTimeline();
+  renderAudioInsightPanel();
 }
-
 function findIntervalNearVideo(direction = 1) {
   const intervals = state.project?.intervals || [];
   if (!intervals.length) return null;
@@ -539,7 +577,9 @@ async function openProject(projectId) {
 
 function setProject(project) {
   state.project = project;
-  state.currentIntervalIndex = project.workflow?.current_interval || state.currentIntervalIndex || project.intervals?.[0]?.index || null;
+  state.currentIntervalIndex = project.workflow?.current_interval || project.intervals?.[0]?.index || null;
+  state.timelineSelectedGroupIndex = null;
+  state.intervalPage = 1;
   state.transcriptSegments = parseTranscript(project.transcript?.text || '');
   els.currentTitle.textContent = project.title || 'Projeto sem nome';
   els.currentMeta.textContent = `${project.source_filename || ''} • duração ${fmt(project.duration || 0)} • ${project.intervals?.length || 0} intervalos`;
@@ -549,6 +589,8 @@ function setProject(project) {
   els.back2Btn.disabled = false;
   els.playPauseBtn.disabled = false;
   els.forward2Btn.disabled = false;
+  if (els.playbackSpeed) els.playbackSpeed.disabled = false;
+  els.videoPlayer.playbackRate = Number(els.playbackSpeed?.value || 1);
   els.saveNotesBtn.disabled = false;
   els.projectNotes.value = project.notes || '';
   els.saveTranscriptBtn.disabled = false;
@@ -565,6 +607,8 @@ function setProject(project) {
   updateWorkflowPanel();
   updateTranscriptStatus();
   renderTranscriptPreview();
+  renderTimeline();
+  renderAudioInsightPanel();
   renderIntervals();
   loadHistory();
 }
@@ -572,6 +616,8 @@ function setProject(project) {
 function clearProject() {
   state.project = null;
   state.currentIntervalIndex = null;
+  state.timelineSelectedGroupIndex = null;
+  state.intervalPage = 1;
   state.transcriptSegments = [];
   els.currentTitle.textContent = 'Nenhum projeto aberto';
   els.currentMeta.textContent = 'Crie ou abra um projeto para começar.';
@@ -582,6 +628,7 @@ function clearProject() {
   els.back2Btn.disabled = true;
   els.playPauseBtn.disabled = true;
   els.forward2Btn.disabled = true;
+  if (els.playbackSpeed) els.playbackSpeed.disabled = true;
   els.saveNotesBtn.disabled = true;
   els.saveTranscriptBtn.disabled = true;
   els.transcribeBtn.disabled = true;
@@ -599,6 +646,8 @@ function clearProject() {
   els.historyList.className = 'history-list empty';
   els.historyList.textContent = 'Abra um projeto para ver o histórico.';
   updateWorkflowPanel();
+  renderTimeline();
+  renderAudioInsightPanel();
   renderIntervals();
 }
 
@@ -718,6 +767,391 @@ function transcriptAround(interval, marginSeconds) {
   return { before, during, after };
 }
 
+function transcriptOverlapInfo(interval, segment) {
+  const rawStart = Number(interval.start || 0);
+  const rawEnd = Number(interval.end || rawStart);
+  const rawDuration = Math.max(0.01, rawEnd - rawStart);
+  const trim = Math.min(0.35, rawDuration * 0.25);
+  const start = rawStart + trim;
+  const end = Math.max(start + 0.01, rawEnd - trim);
+  const bodyDuration = Math.max(0.01, end - start);
+  const segStart = Number(segment.start || 0);
+  const segEnd = Number(segment.end || segStart + 3);
+  const segDuration = Math.max(0.01, segEnd - segStart);
+  const overlapStart = Math.max(start, segStart);
+  const overlapEnd = Math.min(end, segEnd);
+  const overlap = Math.max(0, overlapEnd - overlapStart);
+  const overlapRatio = overlap / bodyDuration;
+  const boundaryPadding = Math.min(0.5, rawDuration * 0.25);
+  const boundaryInside = (segStart >= rawStart - boundaryPadding && segStart <= rawEnd + boundaryPadding)
+    || (segEnd >= rawStart - boundaryPadding && segEnd <= rawEnd + boundaryPadding);
+  const coarseTranscriptBlock = segDuration > Math.max(6, bodyDuration * 2.5);
+  const meaningfulOverlap = overlap >= Math.max(0.45, Math.min(1.2, bodyDuration * 0.45));
+
+  return {
+    overlap,
+    overlapRatio,
+    boundaryInside,
+    coarseTranscriptBlock,
+    meaningful: overlap > 0 && (boundaryInside || (!coarseTranscriptBlock && meaningfulOverlap)),
+  };
+}
+
+function transcriptDuringInterval(interval) {
+  if (!state.transcriptSegments.length) return [];
+  return state.transcriptSegments.filter(segment => transcriptOverlapInfo(interval, segment).meaningful);
+}
+
+function backgroundInfoForInterval(interval) {
+  const stateName = interval.background_state || 'unknown';
+  const labels = {
+    quiet: 'silêncio quase puro',
+    low_background: 'fundo baixo possível',
+    active_background: 'fundo audível: ouça antes',
+    unknown: 'fundo não analisado',
+  };
+  const details = {
+    quiet: 'A medição de áudio encontrou volume muito baixo nesta pausa.',
+    low_background: 'Existe som baixo. Pode ser música, trilha, ambiente ou ruído, então vale ouvir antes.',
+    active_background: 'O fundo está audível. Pode ser música, trilha, ambiente ou fala fraca; revise com cuidado.',
+    unknown: 'Esta pausa ainda não tem medição de fundo. Rode a detecção novamente para classificar melhor.',
+  };
+  const className = stateName === 'quiet'
+    ? 'quiet'
+    : stateName === 'low_background'
+      ? 'low-background'
+      : stateName === 'active_background'
+        ? 'active-background'
+        : 'unknown';
+  const rms = Number(interval.background_rms_db);
+  const peak = Number(interval.background_peak_db);
+  const rmsText = Number.isFinite(rms) ? `RMS ${rms.toFixed(1)} dB` : 'RMS sem leitura';
+  const peakText = Number.isFinite(peak) ? `pico ${peak.toFixed(1)} dB` : 'pico sem leitura';
+  return {
+    state: stateName,
+    className,
+    label: interval.background_label || labels[stateName] || labels.unknown,
+    detail: interval.background_detail || details[stateName] || details.unknown,
+    rmsText,
+    peakText,
+  };
+}
+
+function audioSeparationForInterval(interval) {
+  const speech = transcriptDuringInterval(interval);
+  const transcriptReady = state.transcriptSegments.length > 0;
+  const usefulDuration = Number(interval.duration || 0);
+  const rawDuration = Number(interval.silence_duration || usefulDuration || 0);
+  const threshold = Number(state.project?.settings?.noise_db ?? els.noiseDb?.value ?? -35);
+  const background = backgroundInfoForInterval(interval);
+  const speechState = speech.length ? 'speech' : transcriptReady ? 'clear' : 'unknown';
+  const recommendationState = speechState === 'speech'
+    ? 'speech'
+    : !transcriptReady
+      ? 'unknown'
+      : background.state === 'active_background'
+        ? 'caution'
+        : 'clear';
+  const speechLabel = speechState === 'speech'
+    ? 'fala perto da pausa'
+    : speechState === 'clear'
+      ? 'sem fala relevante'
+      : 'sem checagem';
+  const recommendationLabel = recommendationState === 'speech'
+    ? 'revisar fala antes'
+    : recommendationState === 'caution'
+      ? 'ouvir fundo antes'
+      : recommendationState === 'clear'
+        ? 'boa para testar'
+        : 'sem checagem';
+  return {
+    speech,
+    transcriptReady,
+    usefulDuration,
+    rawDuration,
+    threshold,
+    speechState,
+    speechLabel,
+    recommendationState,
+    recommendationLabel,
+    background,
+    bedState: background.state,
+    bedClass: background.className,
+    bedLabel: background.label,
+    bedDetail: background.detail,
+    bedRmsText: background.rmsText,
+    bedPeakText: background.peakText,
+  };
+}
+
+function audioSplitHtml(interval) {
+  const info = audioSeparationForInterval(interval);
+  const speechDetail = info.speech.length
+    ? 'Existe fala perto desta pausa. Confira antes de gravar para não narrar por cima de alguém.'
+    : info.transcriptReady
+      ? 'Não encontrei fala relevante nesta pausa. Agora confira o fundo: silêncio limpo é melhor; fundo audível pede revisão.'
+      : 'Ainda não há checagem de fala para este projeto. Use como pausa de som baixo e revise no vídeo.';
+  return `
+    <div class="audio-split ${info.recommendationState}">
+      <div class="audio-split-row">
+        <span class="audio-pill voice ${info.speechState}">Fala: ${info.speechLabel}</span>
+        <span class="audio-pill bed ${info.bedClass}">Fundo: ${info.bedLabel}</span>
+        <span class="audio-pill meter">${info.bedRmsText}</span>
+      </div>
+      <p>${speechDetail}</p>
+      <small>${escapeHtml(info.bedDetail)} A ferramenta não reconhece instrumentos por nome; ela mede fundo audível e cruza com a checagem de voz para evitar gravar por cima de falas.</small>
+    </div>
+  `;
+}
+function renderAudioInsightPanel() {
+  if (!els.audioInsightPanel) return;
+  const project = state.project;
+  const intervals = project?.intervals || [];
+  if (!project) {
+    els.audioInsightPanel.innerHTML = '<strong>Checklist antes de gravar</strong><p class="hint">Abra um projeto para ver quais pausas são melhores para gravar primeiro.</p>';
+    return;
+  }
+  if (!intervals.length) {
+    els.audioInsightPanel.innerHTML = '<strong>Checklist antes de gravar</strong><p class="hint">Clique em detectar pausas. Depois o sistema separa fala, silêncio limpo e fundo audível.</p>';
+    return;
+  }
+  const analyses = intervals.map(interval => audioSeparationForInterval(interval));
+  const speechCount = analyses.filter(item => item.recommendationState === 'speech').length;
+  const clearCount = analyses.filter(item => item.recommendationState === 'clear').length;
+  const cautionCount = analyses.filter(item => item.recommendationState === 'caution').length;
+  const unknownCount = analyses.filter(item => item.recommendationState === 'unknown').length;
+  const quietCount = analyses.filter(item => item.bedState === 'quiet').length;
+  const lowBackgroundCount = analyses.filter(item => item.bedState === 'low_background').length;
+  const activeBackgroundCount = analyses.filter(item => item.bedState === 'active_background').length;
+  const threshold = Number(project.settings?.noise_db ?? els.noiseDb?.value ?? -35);
+  const clearItems = intervals
+    .filter(interval => audioSeparationForInterval(interval).recommendationState === 'clear')
+    .sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
+    .slice(0, 4);
+  const cautionItems = intervals
+    .filter(interval => audioSeparationForInterval(interval).recommendationState === 'caution')
+    .sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
+    .slice(0, 4);
+  const attentionItems = intervals
+    .filter(interval => audioSeparationForInterval(interval).recommendationState === 'speech')
+    .sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
+    .slice(0, 4);
+  const miniButton = (interval, stateClass, note) => {
+    const info = audioSeparationForInterval(interval);
+    return `<button type="button" data-index="${interval.index}" class="audio-mini ${stateClass}">
+        <strong>Pausa ${interval.index}</strong>
+        <span>${fmt(interval.start)} - ${Number(interval.duration || 0).toFixed(1)}s</span>
+        <small>${note}. ${escapeHtml(info.bedLabel)}</small>
+      </button>`;
+  };
+  const clearHtml = clearItems.length
+    ? clearItems.map(interval => miniButton(interval, 'clear', 'verde: boa candidata para gravar')).join('')
+    : '<p class="hint">Nenhuma pausa verde ainda. Rode a checagem de voz/fundo ou revise os vídeos vermelhos e amarelos.</p>';
+  const cautionHtml = cautionItems.length
+    ? cautionItems.map(interval => miniButton(interval, 'caution', 'amarela: sem fala, mas com fundo audível')).join('')
+    : '<p class="hint">Nenhuma pausa amarela encontrada.</p>';
+  const speechHtml = attentionItems.length
+    ? attentionItems.map(interval => miniButton(interval, 'speech', 'vermelha: fala perto da pausa')).join('')
+    : '<p class="hint">Nenhuma pausa vermelha encontrada.</p>';
+  els.audioInsightPanel.innerHTML = `
+    <div class="audio-insight-header">
+      <strong>Checklist antes de gravar</strong>
+      <span>som baixo configurado em ${threshold} dB</span>
+    </div>
+    <div class="audio-summary-grid">
+      <span><strong>${intervals.length}</strong> pausas achadas por som baixo</span>
+      <span><strong>${clearCount}</strong> verdes: melhores para testar</span>
+      <span><strong>${cautionCount}</strong> amarelas: fundo audível, ouvir antes</span>
+      <span><strong>${speechCount}</strong> vermelhas: fala perto da pausa</span>
+      <span><strong>${unknownCount}</strong> cinzas: falta checagem</span>
+      <span><strong>${quietCount}</strong> silêncio limpo · <strong>${lowBackgroundCount + activeBackgroundCount}</strong> com fundo medido</span>
+    </div>
+    <p class="audio-purpose">O sistema não reconhece música por nome. Ele mede se há fundo audível na pausa e cruza isso com a checagem de voz. Verde é o melhor começo; amarelo pode ter música, trilha, ambiente ou ruído; vermelho tem fala perto da pausa.</p>
+    <div class="audio-attention-title">Melhores pausas para gravar primeiro</div>
+    <div class="audio-mini-list">${clearHtml}</div>
+    <div class="audio-attention-title">Pausas sem fala, mas com fundo audível</div>
+    <div class="audio-mini-list">${cautionHtml}</div>
+    <div class="audio-attention-title">Pausas com fala para revisar</div>
+    <div class="audio-mini-list">${speechHtml}</div>
+  `;
+  els.audioInsightPanel.querySelectorAll('[data-index]').forEach(button => {
+    button.addEventListener('click', () => goToInterval(Number(button.dataset.index), true));
+  });
+}
+function timelineGroups(intervals, duration, maxGroups = 48) {
+  const groupCount = Math.max(12, Math.min(maxGroups, Math.ceil(duration / 75), Math.max(intervals.length, 1)));
+  const groups = Array.from({ length: groupCount }, (_, index) => ({
+    index,
+    start: (duration / groupCount) * index,
+    end: (duration / groupCount) * (index + 1),
+    intervals: [],
+    speechCount: 0,
+    clearCount: 0,
+    cautionCount: 0,
+    unknownCount: 0,
+  }));
+  intervals.forEach(interval => {
+    const start = Math.max(0, Number(interval.start || 0));
+    const groupIndex = Math.max(0, Math.min(groupCount - 1, Math.floor((start / Math.max(duration, 1)) * groupCount)));
+    const group = groups[groupIndex];
+    const info = audioSeparationForInterval(interval);
+    group.intervals.push(interval);
+    if (info.recommendationState === 'speech') group.speechCount += 1;
+    else if (info.recommendationState === 'caution') group.cautionCount += 1;
+    else if (info.recommendationState === 'clear') group.clearCount += 1;
+    else group.unknownCount += 1;
+  });
+  return groups;
+}
+function timelineRulerHtml(duration) {
+  const marks = [0, 0.25, 0.5, 0.75, 1];
+  return `<div class="timeline-ruler">${marks.map(mark => `<span>${fmtClock(duration * mark)}</span>`).join('')}</div>`;
+}
+
+function timelineCellHtml(group, maxCount, currentIndex, lane, selectedGroupIndex) {
+  const first = group.intervals[0];
+  const density = first ? Math.max(0.16, group.intervals.length / Math.max(maxCount, 1)).toFixed(2) : '0';
+  const hasCurrent = group.intervals.some(interval => Number(interval.index) === Number(currentIndex));
+  const selected = Number(group.index) === Number(selectedGroupIndex);
+  const checkedCount = group.speechCount + group.clearCount + group.cautionCount;
+  const stateClass = !first
+    ? 'empty'
+    : !checkedCount
+      ? 'unknown'
+      : group.speechCount >= Math.max(group.clearCount, group.cautionCount)
+        ? 'speech'
+        : group.cautionCount > group.clearCount
+          ? 'caution'
+          : 'clear';
+  const label = first
+    ? `Abrir região: ${group.intervals.length} pausa(s) entre ${fmtClock(group.start)} e ${fmtClock(group.end)}. ${group.clearCount} verdes; ${group.cautionCount} amarelas com fundo audível; ${group.speechCount} vermelhas com fala; ${group.unknownCount} sem checagem.`
+    : `Sem pausa entre ${fmtClock(group.start)} e ${fmtClock(group.end)}.`;
+  const className = `timeline-cell ${stateClass} ${hasCurrent ? 'current' : ''} ${selected ? 'selected' : ''}`;
+  if (!first) {
+    return `<span class="${className}" style="--density:${density}" aria-hidden="true"></span>`;
+  }
+  return `<button class="${className}" type="button" data-group="${group.index}" style="--density:${density}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"></button>`;
+}
+function selectedTimelineGroup(groups) {
+  const selected = groups.find(group => Number(group.index) === Number(state.timelineSelectedGroupIndex) && group.intervals.length);
+  if (selected) return selected;
+  const current = groups.find(group => group.intervals.some(interval => Number(interval.index) === Number(state.currentIntervalIndex)));
+  return current || groups.find(group => group.intervals.length) || null;
+}
+
+function timelineDetailHtml(group) {
+  if (!group || !group.intervals.length) return '';
+  const span = Math.max(0.01, group.end - group.start);
+  const markerGap = 6;
+  const lanes = [];
+  const markers = group.intervals.map(interval => {
+    const start = Math.max(group.start, Number(interval.start || group.start));
+    const left = Math.max(2, Math.min(98, ((start - group.start) / span) * 100));
+    let lane = lanes.findIndex(lastLeft => left >= lastLeft + markerGap);
+    if (lane < 0) {
+      lane = lanes.length;
+      lanes.push(-Infinity);
+    }
+    lanes[lane] = left;
+    const info = audioSeparationForInterval(interval);
+    const current = Number(interval.index) === Number(state.currentIntervalIndex);
+    const label = `Pausa ${interval.index}. ${info.recommendationLabel}. ${info.bedLabel}. Começa em ${fmt(interval.start)} e tem ${Number(interval.duration || 0).toFixed(1)} segundos. Clique para abrir o card e posicionar o vídeo.`;
+    return `<button class="timeline-detail-marker ${info.recommendationState} ${current ? 'current' : ''}" type="button" data-index="${interval.index}" style="left:${left}%; --lane:${lane};" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span>${interval.index}</span></button>`;
+  }).join('');
+  const laneCount = Math.max(1, lanes.length);
+  return `
+    <div class="timeline-detail">
+      <div class="timeline-detail-title">
+        <strong>Pausas desta parte do vídeo</strong>
+        <span>${fmtClock(group.start)} até ${fmtClock(group.end)} | ${group.intervals.length} pausa(s)</span>
+      </div>
+      <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" aria-label="Pausas individuais da região escolhida">${markers}</div>
+      <p>Clique em uma pausa. O vídeo vai para o tempo certo e a página desce até o card dela.</p>
+    </div>
+  `;
+}
+async function openIntervalFromTimelinePause(index) {
+  if (!state.project) return;
+  const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
+  if (!interval) return;
+  state.currentIntervalIndex = interval.index;
+  showIntervalPage(index, true);
+  renderTimeline();
+  renderAudioInsightPanel();
+  await setVideoTime(interval, false, false, { scrollVideo: false });
+  const card = document.getElementById(`interval-${interval.index}`);
+  if (card) {
+    card.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    card.focus({ preventScroll: true });
+  }
+  showToast(`Vídeo posicionado na pausa ${interval.index}.`);
+}
+
+function selectTimelineGroup(groupIndex) {
+  state.timelineSelectedGroupIndex = Number(groupIndex);
+  renderTimeline();
+}
+
+function renderTimeline() {
+  if (!els.timelineTrack || !els.timelineStatus) return;
+  const project = state.project;
+  const intervals = project?.intervals || [];
+  const duration = Number(project?.duration || els.videoPlayer.duration || 0);
+  if (!project) {
+    els.timelineStatus.textContent = 'Abra um projeto para ver a linha do tempo.';
+    els.timelineTrack.className = 'timeline-track';
+    els.timelineTrack.innerHTML = '<p class="hint">Nenhum projeto aberto.</p>';
+    return;
+  }
+  if (!intervals.length || !duration) {
+    els.timelineStatus.textContent = 'Este projeto ainda não tem pausas salvas. Clique em detectar pausas para gerar a linha do tempo.';
+    els.timelineTrack.className = 'timeline-track';
+    els.timelineTrack.innerHTML = '<p class="hint">Nenhum intervalo detectado ainda.</p>';
+    return;
+  }
+
+  const groups = timelineGroups(intervals, duration, 48);
+  const filledGroups = groups.filter(group => group.intervals.length);
+  const maxCount = Math.max(...filledGroups.map(group => group.intervals.length), 1);
+  const currentGroup = selectedTimelineGroup(groups);
+  if (currentGroup) state.timelineSelectedGroupIndex = currentGroup.index;
+  const gridStyle = `grid-template-columns: repeat(${groups.length}, minmax(0, 1fr));`;
+  const recommendationCells = groups.map(group => timelineCellHtml(group, maxCount, state.currentIntervalIndex, 'recommendation', state.timelineSelectedGroupIndex)).join('');
+
+  els.timelineStatus.textContent = `${intervals.length} pausa(s) em ${fmtClock(duration)}. Clique numa região para ver as pausas daquela parte.`;
+  els.timelineTrack.className = 'timeline-track editor';
+  els.timelineTrack.innerHTML = `
+    <div class="timeline-editor">
+      ${timelineRulerHtml(duration)}
+      <div class="timeline-lane-row">
+        <span class="timeline-lane-label">regiões</span>
+        <div class="timeline-lane recommendation" style="${gridStyle}">${recommendationCells}<i class="timeline-playhead"></i></div>
+      </div>
+      <div class="timeline-lane-help">Cada bloco junta pausas próximas. Verde = maioria sem fala relevante. Vermelho = maioria com começo/fim de fala perto da pausa. Cinza = sem checagem de fala.</div>
+      ${timelineDetailHtml(currentGroup)}
+    </div>
+  `;
+  els.timelineTrack.querySelectorAll('[data-group]').forEach(button => {
+    button.addEventListener('click', () => selectTimelineGroup(Number(button.dataset.group)));
+  });
+  els.timelineTrack.querySelectorAll('.timeline-detail-marker[data-index]').forEach(button => {
+    button.addEventListener('click', () => openIntervalFromTimelinePause(Number(button.dataset.index)));
+  });
+  updateTimelineProgress();
+}
+function updateTimelineProgress() {
+  if (!els.timelineTrack) return;
+  const duration = Number(state.project?.duration || els.videoPlayer.duration || 0);
+  const percent = duration
+    ? Math.max(0, Math.min(100, (Number(els.videoPlayer.currentTime || 0) / duration) * 100))
+    : 0;
+  const progress = els.timelineTrack.querySelector('.timeline-progress');
+  if (progress) progress.style.width = `${percent}%`;
+  els.timelineTrack.querySelectorAll('.timeline-playhead').forEach(playhead => {
+    playhead.style.left = `${percent}%`;
+  });
+}
+
 function renderTranscriptBlock(title, segments) {
   if (!segments.length) return '';
   const items = segments.map(seg => `<li><strong>${fmt(seg.start)}</strong> ${escapeHtml(seg.text)}</li>`).join('');
@@ -737,16 +1171,48 @@ function scrollToTranscriptPanel() {
   panel.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'start' });
 }
 
-function setVideoTime(interval, shouldPlay, includePreviewMargin = false) {
+function clearSegmentPreviewStopper() {
+  if (!state.segmentPreviewStopper) return;
+  const { video, handler, fallback } = state.segmentPreviewStopper;
+  if (video && handler) video.removeEventListener('timeupdate', handler);
+  if (fallback) clearTimeout(fallback);
+  state.segmentPreviewStopper = null;
+}
+
+function waitForSeek(video, start) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      video.removeEventListener('seeked', finish);
+      video.removeEventListener('canplay', finish);
+      resolve();
+    };
+    video.addEventListener('seeked', finish);
+    video.addEventListener('canplay', finish);
+    video.currentTime = start;
+    setTimeout(finish, 500);
+  });
+}
+
+async function setVideoTime(interval, shouldPlay, includePreviewMargin = false, options = {}) {
+  clearSegmentPreviewStopper();
   const margin = includePreviewMargin ? Number(els.previewMargin.value || 2) : 0;
   const start = Math.max(0, Number(interval.start || 0) - margin);
-  els.videoPlayer.currentTime = start;
+  const video = els.videoPlayer;
+  video.pause();
+  await waitForSeek(video, start);
   if (shouldPlay) {
-    els.videoPlayer.play();
+    try {
+      await video.play();
+    } catch (_) {
+      showToast('Clique no player para iniciar o trecho.');
+    }
   } else {
-    els.videoPlayer.pause();
+    video.pause();
   }
-  scrollToVideoPanel();
+  if (options.scrollVideo !== false) scrollToVideoPanel();
 }
 
 function transcriptContextHtml(interval) {
@@ -905,7 +1371,7 @@ async function uploadProject() {
       maybeStartAutoTranscription();
     }
     await loadProjects();
-    showToast(res.transcription_job_id ? 'Projeto criado. Transcrição automática iniciada.' : 'Projeto criado com sucesso.');
+    showToast('Projeto criado com sucesso.');
   } catch (err) {
     await cancelCurrentUploadSilently();
     setLoadingError(err.message);
@@ -983,21 +1449,32 @@ async function detectSilences() {
   setTimeout(() => setLoading(false), 450);
 }
 
-function playSegment(interval) {
+async function playSegment(interval) {
+  clearSegmentPreviewStopper();
   const margin = Number(els.previewMargin.value || 2);
   const video = els.videoPlayer;
   const start = Math.max(0, Number(interval.start || 0) - margin);
   const stopAt = Number(interval.end || 0) + margin;
-  video.currentTime = start;
-  video.play();
+  video.pause();
+  await waitForSeek(video, start);
   scrollToVideoPanel();
   const onTimeUpdate = () => {
     if (video.currentTime >= stopAt) {
       video.pause();
-      video.removeEventListener('timeupdate', onTimeUpdate);
+      clearSegmentPreviewStopper();
     }
   };
+  const fallback = setTimeout(() => {
+    if (!video.paused) video.pause();
+    clearSegmentPreviewStopper();
+  }, Math.max(1000, (stopAt - start + 0.4) * 1000));
+  state.segmentPreviewStopper = { video, handler: onTimeUpdate, fallback };
   video.addEventListener('timeupdate', onTimeUpdate);
+  try {
+    await video.play();
+  } catch (_) {
+    showToast('Clique no player para iniciar o trecho.');
+  }
 }
 
 function jumpToStart(interval) {
@@ -1009,37 +1486,79 @@ function positionAtStart(interval) {
   showToast('Vídeo posicionado na pausa, sem iniciar.');
 }
 
+function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
+  if (!els.intervalPager) return;
+  const pageSize = Number(state.intervalPageSize || 24);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (!total) {
+    els.intervalPager.hidden = true;
+    els.intervalPager.innerHTML = '';
+    return;
+  }
+  els.intervalPager.hidden = false;
+  const pageOptions = [12, 24, 48, 96].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size} por página</option>`).join('');
+  els.intervalPager.innerHTML = `
+    <div class="pager-info">Mostrando ${startNumber}-${endNumber} de ${total} card(s). Página ${state.intervalPage} de ${totalPages}.</div>
+    <div class="pager-actions">
+      <button class="button" type="button" data-page="prev" ${state.intervalPage <= 1 ? 'disabled' : ''} title="Mostra a página anterior de cards">Anterior</button>
+      <select class="input page-size-input" data-page-size title="Quantidade de cards carregados por vez para evitar lentidão">
+        ${pageOptions}
+      </select>
+      <button class="button" type="button" data-page="next" ${state.intervalPage >= totalPages ? 'disabled' : ''} title="Mostra a próxima página de cards">Próxima</button>
+    </div>
+  `;
+  els.intervalPager.querySelector('[data-page="prev"]')?.addEventListener('click', () => {
+    state.intervalPage = Math.max(1, state.intervalPage - 1);
+    renderIntervals();
+    els.intervalPager.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  });
+  els.intervalPager.querySelector('[data-page="next"]')?.addEventListener('click', () => {
+    state.intervalPage = Math.min(totalPages, state.intervalPage + 1);
+    renderIntervals();
+    els.intervalPager.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  });
+  els.intervalPager.querySelector('[data-page-size]')?.addEventListener('change', (event) => {
+    state.intervalPageSize = Number(event.currentTarget.value || 24);
+    state.intervalPage = 1;
+    renderIntervals();
+  });
+}
+
 function renderIntervals() {
   const project = state.project;
   const intervals = project?.intervals || [];
-  const term = (els.searchIntervals.value || '').toLowerCase().trim();
-  const status = els.statusFilter.value || '';
-  let filtered = intervals.filter(interval => {
-    const text = `${interval.title || ''} ${interval.script || ''} ${interval.notes || ''}`.toLowerCase();
-    const matchesTerm = !term || text.includes(term);
-    const matchesStatus = !status || interval.status === status;
-    return matchesTerm && matchesStatus;
-  });
+  const filtered = filteredIntervalList();
 
   if (!project) {
+    if (els.intervalPager) els.intervalPager.hidden = true;
     els.intervalsContainer.className = 'intervals empty-state';
     els.intervalsContainer.innerHTML = '<h3>Nenhum projeto aberto.</h3><p>Crie ou abra um projeto para começar.</p>';
     return;
   }
   if (!intervals.length) {
+    if (els.intervalPager) els.intervalPager.hidden = true;
     els.intervalsContainer.className = 'intervals empty-state';
-    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente”.</p>';
+    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente” para gerar os cards e a linha do tempo.</p>';
     return;
   }
   if (!filtered.length) {
+    if (els.intervalPager) els.intervalPager.hidden = true;
     els.intervalsContainer.className = 'intervals empty-state';
     els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo encontrado com esse filtro.</h3><p>Limpe a busca ou mude o status.</p>';
     return;
   }
 
+  const pageSize = Math.max(1, Number(state.intervalPageSize || 24));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  state.intervalPage = Math.max(1, Math.min(totalPages, Number(state.intervalPage || 1)));
+  const start = (state.intervalPage - 1) * pageSize;
+  const pageIntervals = filtered.slice(start, start + pageSize);
+  const end = start + pageIntervals.length;
+  renderIntervalPager(filtered.length, pageIntervals.length, start + 1, end);
+
   els.intervalsContainer.className = 'intervals';
   els.intervalsContainer.innerHTML = '';
-  filtered.forEach(interval => {
+  pageIntervals.forEach(interval => {
     const card = document.createElement('article');
     card.className = `interval-card ${state.currentIntervalIndex === interval.index ? 'current' : ''}`;
     card.id = `interval-${interval.index}`;
@@ -1049,7 +1568,7 @@ function renderIntervals() {
       ? `<audio class="recording-preview" controls src="/media/${project.id}/recordings/${encodeURIComponent(interval.recording_filename)}"></audio>`
       : '<p class="hint">Nenhuma gravação enviada ainda.</p>';
     const warning = interval.warning ? `<div class="interval-warning">${escapeHtml(interval.warning)}</div>` : '';
-    const transcriptContext = transcriptContextHtml(interval);
+    const audioSplit = audioSplitHtml(interval);
     card.innerHTML = `
       <header>
         <div>
@@ -1062,19 +1581,19 @@ function renderIntervals() {
         </div>
       </header>
       <div class="interval-actions">
-        <button class="button" data-action="play">Ver trecho</button>
-        <button class="button" data-action="jump">Ir ao início</button>
-        <button class="button" data-action="position">Posicionar e pausar</button>
-        <button class="button" data-action="mark-current">Usar como atual</button>
-        <button class="button record" data-action="record">● Gravar</button>
-        <button class="button" data-action="delete-recording" ${interval.recording_filename ? '' : 'disabled'}>Remover gravação</button>
+        <button class="button" data-action="play" title="Toca só este trecho com a margem de contexto configurada">Ver trecho</button>
+        <button class="button" data-action="jump" title="Vai para o início útil da pausa e começa o vídeo">Ir ao início</button>
+        <button class="button" data-action="position" title="Posiciona o vídeo no início da pausa sem tocar">Posicionar e pausar</button>
+        <button class="button" data-action="mark-current" title="Marca este card como o intervalo atual da revisão">Usar como atual</button>
+        <button class="button record" data-action="record" title="Grava sua narração para este intervalo">● Gravar</button>
+        <button class="button" data-action="delete-recording" title="Remove a gravação salva neste intervalo" ${interval.recording_filename ? '' : 'disabled'}>Remover gravação</button>
       </div>
       <div class="status-row">
         <label>Título
           <input class="input title-input" value="${escapeHtml(interval.title || '')}">
         </label>
         <label>Status
-          <select class="input status-input">
+          <select class="input status-input" title="Use o status para controlar o andamento deste intervalo">
             ${['pendente','roteirizado','gravado','revisado','descartado'].map(s => `<option value="${s}" ${interval.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
           </select>
         </label>
@@ -1086,13 +1605,10 @@ function renderIntervals() {
         <textarea class="textarea notes-input" rows="2" placeholder="Ex.: regravar mais curto, validar com o Ícaro, som ambiente importante...">${escapeHtml(interval.notes || '')}</textarea>
       </label>
       <div class="save-row">
-        <button class="button primary" data-action="save">Salvar intervalo</button>
+        <button class="button primary" data-action="save" title="Salva manualmente este card; alterações também ficam em autosave">Salvar intervalo</button>
         <span class="autosave-state" aria-live="polite">Salvo no histórico local.</span>
       </div>
-      <details class="transcript-context">
-        <summary>Falas próximas da pausa</summary>
-        ${transcriptContext}
-      </details>
+      ${audioSplit}
       ${recordingAudio}
       ${warning}
     `;
@@ -1101,7 +1617,6 @@ function renderIntervals() {
     card.querySelector('[data-action="jump"]').addEventListener('click', () => jumpToStart(interval));
     card.querySelector('[data-action="position"]').addEventListener('click', () => positionAtStart(interval));
     card.querySelector('[data-action="mark-current"]').addEventListener('click', () => goToInterval(interval.index, false));
-    card.querySelector('[data-action="transcript-full"]')?.addEventListener('click', scrollToTranscriptPanel);
     card.querySelector('[data-action="save"]').addEventListener('click', () => saveInterval(interval.index, card));
     card.querySelector('[data-action="record"]').addEventListener('click', (ev) => toggleRecording(interval.index, ev.currentTarget));
     card.querySelector('[data-action="delete-recording"]').addEventListener('click', () => deleteRecording(interval.index));
@@ -1112,7 +1627,6 @@ function renderIntervals() {
     els.intervalsContainer.appendChild(card);
   });
 }
-
 function intervalPayloadFromCard(card) {
   return {
     title: card.querySelector('.title-input').value,
@@ -1249,6 +1763,7 @@ async function loadHistory() {
 }
 
 function renderHistory(history) {
+  history = (history || []).filter(item => !/transcri/i.test(String(item.reason || '')));
   if (!history.length) {
     els.historyList.className = 'history-list empty';
     els.historyList.textContent = 'O histórico aparecerá depois do próximo salvamento.';
@@ -1391,12 +1906,15 @@ async function exportFile(kind) {
 
 function setupPlayerButtons() {
   els.back2Btn.addEventListener('click', () => {
+    clearSegmentPreviewStopper();
     els.videoPlayer.currentTime = Math.max(0, els.videoPlayer.currentTime - 2);
   });
   els.forward2Btn.addEventListener('click', () => {
+    clearSegmentPreviewStopper();
     els.videoPlayer.currentTime = Math.min(els.videoPlayer.duration || Infinity, els.videoPlayer.currentTime + 2);
   });
   els.playPauseBtn.addEventListener('click', () => {
+    clearSegmentPreviewStopper();
     if (els.videoPlayer.paused) els.videoPlayer.play();
     else els.videoPlayer.pause();
   });
@@ -1424,9 +1942,16 @@ function bindEvents() {
   els.saveTranscriptBtn.addEventListener('click', saveTranscript);
   els.refreshHistoryBtn.addEventListener('click', loadHistory);
   els.transcriptSearch.addEventListener('input', renderTranscriptPreview);
-  els.transcriptContextSeconds.addEventListener('change', renderIntervals);
+  els.transcriptContextSeconds.addEventListener('change', () => {
+    renderIntervals();
+    renderTimeline();
+    renderAudioInsightPanel();
+  });
   els.transcriptText.addEventListener('input', () => {
     renderTranscriptPreview();
+    renderIntervals();
+    renderTimeline();
+    renderAudioInsightPanel();
     clearTimeout(state.transcriptSaveTimer);
     state.transcriptSaveTimer = setTimeout(() => {
       if (state.project) saveTranscript();
@@ -1443,8 +1968,17 @@ function bindEvents() {
   });
   els.markReviewedBtn.addEventListener('click', markCurrentReviewed);
   els.exportButtons.forEach(btn => btn.addEventListener('click', () => exportFile(btn.dataset.export)));
-  els.searchIntervals.addEventListener('input', renderIntervals);
-  els.statusFilter.addEventListener('change', renderIntervals);
+  els.searchIntervals.addEventListener('input', () => { state.intervalPage = 1; renderIntervals(); });
+  els.statusFilter.addEventListener('change', () => { state.intervalPage = 1; renderIntervals(); });
+  els.videoPlayer.addEventListener('seeking', () => {
+    if (state.segmentPreviewStopper) clearSegmentPreviewStopper();
+  });
+  els.videoPlayer.addEventListener('timeupdate', updateTimelineProgress);
+  els.videoPlayer.addEventListener('loadedmetadata', renderTimeline);
+  els.playbackSpeed?.addEventListener('change', () => {
+    els.videoPlayer.playbackRate = Number(els.playbackSpeed.value || 1);
+    showToast(`Velocidade do vídeo: ${els.playbackSpeed.value}x.`);
+  });
   els.dismissErrorBtn.addEventListener('click', hideError);
   els.closeLoadingBtn.addEventListener('click', () => setLoading(false));
   setupPlayerButtons();

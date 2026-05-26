@@ -133,7 +133,7 @@ def transcribe_video(
     model_name = model_name or os.environ.get("AD_ASSIST_TRANSCRIBE_MODEL", "small")
     device = device or os.environ.get("AD_ASSIST_TRANSCRIBE_DEVICE", "cpu")
     compute_type = compute_type or os.environ.get("AD_ASSIST_TRANSCRIBE_COMPUTE_TYPE", "int8")
-    language = language or os.environ.get("AD_ASSIST_TRANSCRIBE_LANGUAGE", "pt")
+    language = language or os.environ.get("AD_ASSIST_TRANSCRIBE_LANGUAGE", "")
     keep_audio = keep_audio if keep_audio is not None else os.environ.get("AD_ASSIST_TRANSCRIBE_KEEP_AUDIO") == "1"
 
     output_dir.mkdir(parents=True, exist_ok=True)
