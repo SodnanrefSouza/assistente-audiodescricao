@@ -15,6 +15,7 @@ os.environ.setdefault("AD_ASSIST_DATA_DIR", str(Path(tempfile.gettempdir()) / "a
 from app.main import create_app  # noqa: E402
 from app.core.ffmpeg_utils import _classify_audio_background, _parse_rms_samples  # noqa: E402
 from app.core.interval_tools import parse_timed_transcript_segments, speech_gap_intervals  # noqa: E402
+from app.core.projects import ProjectStore  # noqa: E402
 
 
 class SmokeTest(unittest.TestCase):
@@ -33,12 +34,14 @@ class SmokeTest(unittest.TestCase):
             "timelineTrack",
             "audioInsightPanel",
             "playbackSpeed",
+            "selectedSegmentBar",
             "addIntervalAtCurrentBtn",
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260602-usability",
-            "Ver exportações",
+            "20260602-top-menus",
+            "Exportar ▾",
+            "Histórico ▾",
             "Ver checklist",
         ):
             self.assertIn(expected, html)
@@ -56,6 +59,8 @@ class SmokeTest(unittest.TestCase):
             "function deleteInterval",
             "function intervalRowHtml",
             "function applyTooltips",
+            "function updateSelectedSegmentBar",
+            "function timelineDetailRulerHtml",
             "[5, 10, 15, 20, 30, 50]",
             "function timelineGroups",
             "playbackRate",
@@ -73,6 +78,9 @@ class SmokeTest(unittest.TestCase):
             ".summary-action",
             ".project-open",
             ".speed-control",
+            ".top-menu-popover",
+            ".selected-segment-bar",
+            ".timeline-detail-ruler",
             "body[data-large-text=\"true\"]",
             "body[data-contrast=\"high\"]",
             "body[data-large-text=\"true\"] .button",
@@ -81,6 +89,25 @@ class SmokeTest(unittest.TestCase):
             ".timeline-cell.caution",
         ):
             self.assertIn(expected, css)
+
+    def test_launcher_exists_for_double_click(self) -> None:
+        launcher = ROOT / "Abrir Assistente.cmd"
+        self.assertTrue(launcher.exists())
+        content = launcher.read_text(encoding="utf-8")
+        self.assertIn(".venv\\Scripts\\python.exe", content)
+        self.assertIn("run.py", content)
+
+    def test_project_delete_removes_project_folder(self) -> None:
+        store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
+        project = store.create_project("video_teste.mp4", title="Teste exclusao")
+        folder = store.project_folder(project["id"])
+        exports = store.exports_dir(project["id"])
+        (exports / "arquivo_gerado.mp4").write_bytes(b"gerado")
+        self.assertTrue(folder.exists())
+
+        response = self.client.delete(f"/api/projects/{project['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(folder.exists())
 
     def test_audio_background_classifier(self) -> None:
         self.assertEqual(_classify_audio_background([-120, -118, -119], -35)["state"], "quiet")

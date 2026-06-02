@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260602-usability">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260602-top-menus">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -79,6 +79,29 @@
           <p id="currentMeta" class="muted">Crie ou abra um projeto para começar.</p>
         </div>
         <div class="header-actions">
+          <details class="top-menu export-menu">
+            <summary class="button menu-summary" title="Abre os arquivos que podem ser baixados deste projeto">Exportar ▾</summary>
+            <div class="top-menu-popover export-actions" aria-label="Formatos de exportação">
+              <button class="button" data-export="script" disabled title="Baixa um roteiro em Markdown para revisar ou entregar">Roteiro .md</button>
+              <button class="button" data-export="csv" disabled title="Baixa uma planilha simples com todos os intervalos">Planilha .csv</button>
+              <button class="button" data-export="srt" disabled title="Baixa o roteiro em formato de legenda SRT">Roteiro .srt</button>
+              <button class="button" data-export="premiere_csv" disabled title="Baixa CSV compatível com Adobe Premiere">CSV Premiere</button>
+              <button class="button" data-export="davinci_csv" disabled title="Baixa CSV compatível com DaVinci Resolve">CSV DaVinci</button>
+              <button class="button" data-export="json" disabled title="Baixa uma cópia completa do projeto em JSON">Projeto .json</button>
+              <button class="button success" data-export="ad_audio" disabled title="Gera e baixa a faixa de audiodescrição em WAV">Faixa AD .wav</button>
+              <button class="button success" data-export="final_video" disabled title="Gera e baixa o vídeo final com a narração misturada">Vídeo final .mp4</button>
+            </div>
+          </details>
+          <details class="top-menu history-menu">
+            <summary class="button menu-summary" title="Abre pontos de retorno salvos automaticamente">Histórico ▾</summary>
+            <div class="top-menu-popover history-popover" aria-label="Histórico de trabalho">
+              <div class="history-menu-header">
+                <p class="muted">Use só se precisar voltar para uma versão anterior.</p>
+                <button class="button" id="refreshHistoryBtn" disabled title="Recarrega os pontos de retorno deste projeto">Atualizar</button>
+              </div>
+              <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
+            </div>
+          </details>
           <button class="button ghost danger" id="deleteProjectBtn" disabled>Excluir projeto</button>
         </div>
       </section>
@@ -102,6 +125,17 @@
         <section class="panel video-panel" id="videoPanel">
           <h2>2. Revisão do vídeo</h2>
           <video id="videoPlayer" class="video" controls preload="metadata"></video>
+          <div id="selectedSegmentBar" class="selected-segment-bar" hidden aria-live="polite" title="Mostra onde começa e termina a pausa selecionada dentro do vídeo inteiro">
+            <div class="segment-bar-header">
+              <strong>Trecho selecionado no vídeo</strong>
+              <span id="selectedSegmentLabel">Nenhuma pausa selecionada.</span>
+            </div>
+            <div class="segment-bar-track" aria-hidden="true">
+              <span class="segment-range" id="segmentRangeMarker"></span>
+              <span class="segment-marker start" id="segmentStartMarker"></span>
+              <span class="segment-marker end" id="segmentEndMarker"></span>
+            </div>
+          </div>
           <div class="player-actions">
             <button class="button" id="back2Btn" disabled title="Volta o vídeo dois segundos">⟲ Voltar 2s</button>
             <button class="button" id="playPauseBtn" disabled title="Toca ou pausa o vídeo">▶︎ Play/Pause</button>
@@ -188,28 +222,6 @@
         </section>
       </section>
 
-      <section class="panel export-panel compact-panel">
-        <details>
-          <summary class="disclosure-summary" title="Clique para abrir os botões de exportação">
-            <span>
-              <strong>4. Exportações</strong>
-              <small>Roteiro, planilhas, áudio AD e vídeo final.</small>
-            </span>
-            <span class="summary-action">Ver exportações ▾</span>
-          </summary>
-          <div class="export-actions">
-            <button class="button" data-export="script" disabled>Roteiro .md</button>
-            <button class="button" data-export="csv" disabled>Planilha .csv</button>
-            <button class="button" data-export="srt" disabled>Roteiro .srt</button>
-            <button class="button" data-export="premiere_csv" disabled>CSV Premiere</button>
-            <button class="button" data-export="davinci_csv" disabled>CSV DaVinci</button>
-            <button class="button" data-export="json" disabled>Projeto .json</button>
-            <button class="button success" data-export="ad_audio" disabled>Faixa AD .wav</button>
-            <button class="button success" data-export="final_video" disabled>Vídeo final .mp4</button>
-          </div>
-        </details>
-      </section>
-
       <section class="panel transcript-panel" hidden aria-hidden="true">
         <details class="transcript-advanced">
           <summary>
@@ -247,28 +259,11 @@
         </details>
       </section>
 
-      <section class="panel history-panel compact-panel">
-        <details>
-          <summary class="disclosure-summary" title="Clique para ver pontos de restauração salvos automaticamente">
-            <span>
-              <strong>Histórico de trabalho</strong>
-              <small>Pontos de retorno salvos automaticamente.</small>
-            </span>
-            <span class="summary-action">Ver histórico ▾</span>
-          </summary>
-          <div class="section-header">
-            <p class="muted">Use apenas se precisar voltar para uma versão anterior do projeto.</p>
-            <button class="button" id="refreshHistoryBtn" disabled>Atualizar histórico</button>
-          </div>
-          <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
-        </details>
-      </section>
-
       <section class="panel intervals-panel">
         <div class="intervals-header">
           <div>
             <h2>5. Intervalos encontrados</h2>
-            <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em um item para abrir os detalhes abaixo.</p>
+            <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em uma pausa para abrir os detalhes ao lado em telas grandes, ou logo abaixo no celular.</p>
           </div>
           <div class="filters">
             <input id="searchIntervals" class="input" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
@@ -312,6 +307,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260602-usability"></script>
+  <script src="/static/js/app.js?v=20260602-top-menus"></script>
 </body>
 </html>

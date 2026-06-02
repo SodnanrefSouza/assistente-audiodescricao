@@ -66,6 +66,11 @@ const els = {
   markReviewedBtn: $('markReviewedBtn'),
   videoPanel: $('videoPanel'),
   videoPlayer: $('videoPlayer'),
+  selectedSegmentBar: $('selectedSegmentBar'),
+  selectedSegmentLabel: $('selectedSegmentLabel'),
+  segmentRangeMarker: $('segmentRangeMarker'),
+  segmentStartMarker: $('segmentStartMarker'),
+  segmentEndMarker: $('segmentEndMarker'),
   playbackSpeed: $('playbackSpeed'),
   timelineTrack: $('timelineTrack'),
   timelineStatus: $('timelineStatus'),
@@ -180,13 +185,15 @@ function applyTooltips(root = document) {
     ['#projectTitle', 'Dê um nome curto para identificar este trabalho na lista de projetos recentes.'],
     ['#videoFile', 'Escolha o vídeo que será analisado. O arquivo fica salvo localmente no seu computador.'],
     ['#uploadBtn', 'Cria um projeto novo com o vídeo escolhido.'],
-    ['#deleteProjectBtn', 'Remove o projeto atual e envia os arquivos dele para a lixeira interna do app.'],
+    ['#deleteProjectBtn', 'Exclui o projeto atual e apaga a pasta dele, incluindo vídeos, gravações, histórico e exportações.'],
     ['#prevPauseBtn', 'Vai para a pausa anterior em relação ao tempo atual do vídeo.'],
     ['#nextPendingBtn', 'Vai para o próximo intervalo que ainda não foi revisado.'],
     ['#nextPauseBtn', 'Vai para a próxima pausa em relação ao tempo atual do vídeo.'],
     ['#markReviewedBtn', 'Marca o intervalo atual como revisado.'],
-    ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para ver as pausas daquela parte do vídeo.'],
-    ['#audioInsightPanel', 'Resumo opcional para decidir quais pausas testar primeiro.'],
+    ['#playbackSpeed', 'Muda apenas a velocidade de reprodução para revisar o vídeo mais rápido ou mais devagar.'],
+    ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
+    ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para abrir as pausas daquela parte e depois escolha uma barra.'],
+    ['#audioInsightPanel', 'Checklist com as pausas mais seguras e as pausas que precisam ser ouvidas antes da gravação.'],
     ['#noiseDb', 'Sensibilidade do volume baixo. -35 costuma funcionar bem. -20 aceita mais barulho; -50 exige quase silêncio.'],
     ['#minSilence', 'Tempo mínimo que o som precisa ficar baixo para virar uma pausa candidata.'],
     ['#minAdDuration', 'Menor tempo útil para caber uma narração curta de audiodescrição.'],
@@ -197,11 +204,12 @@ function applyTooltips(root = document) {
     ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
     ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
     ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
-    ['.export-panel summary', 'Clique para mostrar ou esconder os formatos de exportação.'],
-    ['.history-panel summary', 'Clique para ver versões salvas automaticamente e restaurar uma delas.'],
-    ['.help-panel', 'Guia rápido do fluxo de trabalho, do envio do vídeo até a exportação.'],
-    ['.settings-panel', 'Ajustes que controlam como o app encontra pausas no vídeo.'],
-    ['.intervals-panel', 'Lista paginada das pausas encontradas. Abra uma pausa para editar roteiro e gravar.'],
+    ['.export-menu > summary', 'Abre os botões para baixar roteiro, planilha, áudio de audiodescrição ou vídeo final.'],
+    ['.history-menu > summary', 'Abre pontos de retorno salvos automaticamente para restaurar uma versão anterior.'],
+    ['#refreshHistoryBtn', 'Atualiza a lista de pontos de retorno salvos para este projeto.'],
+    ['.help-panel', 'Guia rápido do fluxo principal: enviar vídeo, detectar pausas, revisar, gravar e exportar.'],
+    ['.settings-panel', 'Campos que definem como o sistema encontra pausas por som baixo e checagem de fala.'],
+    ['.intervals-panel', 'Lista paginada de pausas. Clique em uma pausa para editar o roteiro e gravar a narração.'],
   ];
   tips.forEach(([selector, tip]) => {
     root.querySelectorAll(selector).forEach(element => {
@@ -554,12 +562,38 @@ function showIntervalPage(index, clearFilters = false) {
   return !!page;
 }
 
+function updateSelectedSegmentBar(interval) {
+  if (!els.selectedSegmentBar) return;
+  const selected = interval === undefined
+    ? (state.project?.intervals || []).find(item => Number(item.index) === Number(state.currentIntervalIndex))
+    : interval;
+  const duration = Number(state.project?.duration || els.videoPlayer.duration || 0);
+  if (!selected || !duration) {
+    els.selectedSegmentBar.hidden = true;
+    if (els.selectedSegmentLabel) els.selectedSegmentLabel.textContent = 'Nenhuma pausa selecionada.';
+    return;
+  }
+  const start = Math.max(0, Number(selected.start || 0));
+  const end = Math.max(start, Number(selected.end || start));
+  const left = Math.max(0, Math.min(100, (start / duration) * 100));
+  const width = Math.max(0.7, Math.min(100 - left, ((end - start) / duration) * 100));
+  const endLeft = Math.min(100, left + width);
+  els.selectedSegmentBar.hidden = false;
+  els.selectedSegmentLabel.textContent = `Pausa ${selected.index}: ${fmt(start)} até ${fmt(end)} (${Number(selected.duration || end - start).toFixed(1)}s)`;
+  els.segmentRangeMarker.style.left = `${left}%`;
+  els.segmentRangeMarker.style.width = `${width}%`;
+  els.segmentStartMarker.style.left = `${left}%`;
+  els.segmentEndMarker.style.left = `${endLeft}%`;
+  els.selectedSegmentBar.title = `Pausa ${selected.index}: começa em ${fmt(start)} e termina em ${fmt(end)}.`;
+}
+
 function goToInterval(index, autoplay = true) {
   if (!state.project) return;
   const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
   if (!interval) return;
   state.currentIntervalIndex = interval.index;
   state.selectedIntervalIndex = interval.index;
+  updateSelectedSegmentBar(interval);
   const visible = visibleIntervalIndexes();
   if (!visible.includes(Number(index))) {
     showIntervalPage(index, true);
@@ -668,6 +702,7 @@ function setProject(project) {
   updateWorkflowPanel();
   updateTranscriptStatus();
   renderTranscriptPreview();
+  updateSelectedSegmentBar();
   renderTimeline();
   renderAudioInsightPanel();
   renderIntervals();
@@ -685,6 +720,7 @@ function clearProject() {
   els.currentMeta.textContent = 'Crie ou abra um projeto para começar.';
   els.videoPlayer.removeAttribute('src');
   els.videoPlayer.load();
+  updateSelectedSegmentBar(null);
   els.deleteProjectBtn.disabled = true;
   els.detectBtn.disabled = true;
   els.back2Btn.disabled = true;
@@ -1123,24 +1159,37 @@ function selectedTimelineGroup(groups) {
   return current || groups.find(group => group.intervals.length) || null;
 }
 
+function timelineDetailRulerHtml(group) {
+  const span = Math.max(0.01, group.end - group.start);
+  const stepCount = Math.min(6, Math.max(3, Math.ceil(span / 20)));
+  const marks = Array.from({ length: stepCount + 1 }, (_, index) => group.start + ((span * index) / stepCount));
+  return `
+    <div class="timeline-detail-ruler" style="--ruler-steps:${marks.length}" aria-hidden="true">
+      ${marks.map(mark => `<span>${fmtClock(mark)}</span>`).join('')}
+    </div>
+  `;
+}
+
 function timelineDetailHtml(group) {
   if (!group || !group.intervals.length) return '';
   const span = Math.max(0.01, group.end - group.start);
-  const markerGap = 6;
   const lanes = [];
   const markers = group.intervals.map(interval => {
     const start = Math.max(group.start, Number(interval.start || group.start));
-    const left = Math.max(2, Math.min(98, ((start - group.start) / span) * 100));
-    let lane = lanes.findIndex(lastLeft => left >= lastLeft + markerGap);
+    const end = Math.min(group.end, Math.max(start, Number(interval.end || start)));
+    const left = Math.max(0, Math.min(99, ((start - group.start) / span) * 100));
+    const rawWidth = ((end - start) / span) * 100;
+    const width = Math.max(0.8, Math.min(100 - left, Math.max(3.2, rawWidth)));
+    let lane = lanes.findIndex(lastEnd => left >= lastEnd + 1.2);
     if (lane < 0) {
       lane = lanes.length;
       lanes.push(-Infinity);
     }
-    lanes[lane] = left;
+    lanes[lane] = left + width;
     const info = audioSeparationForInterval(interval);
     const current = Number(interval.index) === Number(state.currentIntervalIndex);
-    const label = `Pausa ${interval.index}. ${info.recommendationLabel}. ${info.bedLabel}. Começa em ${fmt(interval.start)} e tem ${Number(interval.duration || 0).toFixed(1)} segundos. Clique para abrir os detalhes e posicionar o vídeo.`;
-    return `<button class="timeline-detail-marker ${info.recommendationState} ${current ? 'current' : ''}" type="button" data-index="${interval.index}" style="left:${left}%; --lane:${lane};" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span>${interval.index}</span></button>`;
+    const label = `Pausa ${interval.index}. ${info.recommendationLabel}. ${info.bedLabel}. Começa em ${fmt(interval.start)}, termina em ${fmt(interval.end)} e tem ${Number(interval.duration || 0).toFixed(1)} segundos. Clique para abrir os detalhes e posicionar o vídeo.`;
+    return `<button class="timeline-detail-marker ${info.recommendationState} ${current ? 'current' : ''}" type="button" data-index="${interval.index}" style="left:${left}%; width:${width}%; --lane:${lane};" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span>${interval.index}</span></button>`;
   }).join('');
   const laneCount = Math.max(1, lanes.length);
   return `
@@ -1149,8 +1198,9 @@ function timelineDetailHtml(group) {
         <strong>Pausas desta parte do vídeo</strong>
         <span>${fmtClock(group.start)} até ${fmtClock(group.end)} | ${group.intervals.length} pausa(s)</span>
       </div>
+      ${timelineDetailRulerHtml(group)}
       <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" aria-label="Pausas individuais da região escolhida">${markers}</div>
-      <p>Clique em uma pausa. O vídeo vai para o tempo certo e os detalhes dela aparecem abaixo.</p>
+      <p>Clique em uma faixa. A largura mostra a duração aproximada, o vídeo vai para o início dela e os detalhes aparecem na lateral.</p>
     </div>
   `;
 }
@@ -1159,6 +1209,8 @@ async function openIntervalFromTimelinePause(index) {
   const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
   if (!interval) return;
   state.currentIntervalIndex = interval.index;
+  state.selectedIntervalIndex = interval.index;
+  updateSelectedSegmentBar(interval);
   showIntervalPage(index, true);
   renderTimeline();
   renderAudioInsightPanel();
@@ -1467,14 +1519,14 @@ async function uploadProject() {
 
 async function deleteCurrentProject() {
   if (!state.project) return;
-  const confirmed = confirm('Arquivar este projeto? Ele sai da lista, mas a pasta é movida para data/trash para recuperação manual.');
+  const confirmed = confirm('Excluir este projeto de vez? Isso apaga o vídeo, gravações, histórico e exportações salvas na pasta dele.');
   if (!confirmed) return;
   setLoading(true, 'Excluindo projeto...', 'Removendo arquivos locais do projeto.', 20);
   try {
     await api(`/api/projects/${state.project.id}`, { method: 'DELETE' });
     clearProject();
     await loadProjects();
-    showToast('Projeto arquivado na lixeira local.');
+    showToast('Projeto excluído junto com os arquivos gerados.');
   } catch (err) {
     showError('Erro ao excluir projeto', err.message);
   } finally {
@@ -1753,6 +1805,7 @@ function renderIntervals() {
   }
   if (!intervals.length) {
     if (els.intervalPager) els.intervalPager.hidden = true;
+    updateSelectedSegmentBar(null);
     els.intervalsContainer.className = 'intervals empty-state';
     els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente” ou use “Adicionar intervalo aqui” no vídeo.</p>';
     return;
@@ -1777,6 +1830,7 @@ function renderIntervals() {
     || pageIntervals[0];
   state.selectedIntervalIndex = selected.index;
   state.currentIntervalIndex = state.currentIntervalIndex || selected.index;
+  updateSelectedSegmentBar(selected);
 
   els.intervalsContainer.className = 'intervals interval-workbench';
   els.intervalsContainer.innerHTML = `

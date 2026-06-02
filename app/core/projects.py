@@ -195,7 +195,7 @@ class ProjectStore:
             json.dump(project, f, ensure_ascii=False, indent=2)
         tmp_path.replace(path)
 
-    def delete(self, project_id: str) -> None:
+    def archive(self, project_id: str) -> None:
         folder = self.project_folder(project_id)
         if folder.exists():
             self.trash_dir.mkdir(parents=True, exist_ok=True)
@@ -204,6 +204,11 @@ class ProjectStore:
             if target.exists():
                 target = self.trash_dir / f"{stamp}_{folder.name}_{uuid.uuid4().hex[:6]}"
             shutil.move(str(folder), str(target))
+
+    def delete(self, project_id: str) -> None:
+        folder = self.project_folder(project_id)
+        if folder.exists():
+            shutil.rmtree(folder)
 
     def list_projects(self) -> list[dict[str, Any]]:
         self.ensure()

@@ -529,7 +529,7 @@ def create_app() -> Flask:
         if not store.exists(project_id):
             raise NotFound("Projeto não encontrado.")
         store.delete(project_id)
-        return ok({"message": "Projeto arquivado na lixeira local."})
+        return ok({"message": "Projeto excluído com vídeos, gravações, histórico e exportações."})
 
     @app.post("/api/projects/<project_id>/notes")
     def update_project_notes(project_id: str):
