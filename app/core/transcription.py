@@ -115,6 +115,53 @@ def save_outputs(segments: list[TranscriptSegment], srt_path: Path, txt_path: Pa
     return srt_text, plain_text
 
 
+def _word_value(word: Any) -> str:
+    return str(getattr(word, "word", "") or "").strip()
+
+
+def _segment_words(raw_segments: Any, *, word_gap: float = 0.45) -> list[TranscriptSegment]:
+    segments: list[TranscriptSegment] = []
+    current_words: list[str] = []
+    current_start: float | None = None
+    current_end: float | None = None
+    fallback_segments: list[TranscriptSegment] = []
+
+    def flush_current() -> None:
+        nonlocal current_words, current_start, current_end
+        text = " ".join(" ".join(current_words).split())
+        if text and current_start is not None and current_end is not None and current_end > current_start:
+            segments.append(TranscriptSegment(round(current_start, 3), round(current_end, 3), text))
+        current_words = []
+        current_start = None
+        current_end = None
+
+    for raw in raw_segments:
+        raw_start = round(float(getattr(raw, "start", 0) or 0), 3)
+        raw_end = round(float(getattr(raw, "end", raw_start) or raw_start), 3)
+        raw_text = str(getattr(raw, "text", "") or "").strip()
+        words = list(getattr(raw, "words", None) or [])
+        if not words:
+            if raw_text:
+                fallback_segments.append(TranscriptSegment(raw_start, raw_end, raw_text))
+            continue
+
+        for word in words:
+            text = _word_value(word)
+            if not text:
+                continue
+            start = float(getattr(word, "start", current_end if current_end is not None else raw_start) or raw_start)
+            end = float(getattr(word, "end", start) or start)
+            if current_end is not None and start > current_end + word_gap:
+                flush_current()
+            if current_start is None:
+                current_start = start
+            current_end = max(float(current_end or start), end)
+            current_words.append(text)
+
+    flush_current()
+    return segments or fallback_segments
+
+
 def transcribe_video(
     video_path: Path,
     output_dir: Path,
@@ -153,21 +200,16 @@ def transcribe_video(
             str(audio_path),
             beam_size=5,
             vad_filter=True,
-            word_timestamps=False,
+            word_timestamps=True,
             language=language or None,
         )
-        segments: list[TranscriptSegment] = []
+        collected_raw_segments: list[Any] = []
         for raw in raw_segments:
-            segment = TranscriptSegment(
-                start=round(float(raw.start or 0), 3),
-                end=round(float(raw.end or 0), 3),
-                text=(raw.text or "").strip(),
-            )
-            if segment.text:
-                segments.append(segment)
+            collected_raw_segments.append(raw)
             if duration:
                 percent = 28 + min(62, (float(raw.end or 0) / max(duration, 1)) * 62)
                 _notify(progress_callback, percent, f"Transcrevendo... {format_srt_time(raw.end or 0)}")
+        segments = _segment_words(collected_raw_segments)
     finally:
         if not keep_audio:
             try:
@@ -209,6 +251,7 @@ def result_to_metadata(result: TranscriptionResult) -> dict[str, Any]:
         "status": "done",
         "language": result.language,
         "model": result.model,
+        "timing_level": "word",
         "segment_count": len(result.segments),
         "srt_filename": result.srt_path.name,
         "txt_filename": result.txt_path.name,

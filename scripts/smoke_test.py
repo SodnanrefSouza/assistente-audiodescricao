@@ -22,6 +22,7 @@ from app.core.interval_tools import (  # noqa: E402
     speech_gap_intervals,
 )
 from app.core.projects import ProjectStore  # noqa: E402
+from app.core.transcription import _segment_words  # noqa: E402
 
 
 class SmokeTest(unittest.TestCase):
@@ -172,6 +173,32 @@ class SmokeTest(unittest.TestCase):
         projects = response.get_json()["projects"]
         current = next(item for item in projects if item["id"] == project["id"])
         self.assertEqual(current["interval_count"], 0)
+
+    def test_word_timestamp_segments_keep_real_speech_gaps(self) -> None:
+        class Word:
+            def __init__(self, start: float, end: float, word: str) -> None:
+                self.start = start
+                self.end = end
+                self.word = word
+
+        class RawSegment:
+            def __init__(self, start: float, end: float, text: str, words: list[Word]) -> None:
+                self.start = start
+                self.end = end
+                self.text = text
+                self.words = words
+
+        segments = _segment_words([
+            RawSegment(0, 10, "ola mundo depois pausa", [
+                Word(0.0, 0.2, "ola"),
+                Word(0.25, 0.5, "mundo"),
+                Word(3.0, 3.2, "depois"),
+                Word(3.25, 3.6, "pausa"),
+            ])
+        ])
+        self.assertEqual(len(segments), 2)
+        self.assertAlmostEqual(segments[0].end, 0.5)
+        self.assertAlmostEqual(segments[1].start, 3.0)
 
     def test_detect_route_requires_transcript_before_intervals(self) -> None:
         store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))

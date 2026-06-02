@@ -640,9 +640,17 @@ def create_app() -> Flask:
     def _has_transcript_text(project: dict[str, Any]) -> bool:
         return bool(str((project.get("transcript") or {}).get("text") or "").strip())
 
+    def _transcript_ready_for_detection(project: dict[str, Any]) -> bool:
+        transcript = project.get("transcript") or {}
+        if not _has_transcript_text(project):
+            return False
+        if transcript.get("source") == "automatic" and transcript.get("timing_level") != "word":
+            return False
+        return True
+
     def _ensure_transcript_for_detection(project_id: str, detection_job_id: str) -> dict[str, Any]:
         project = store.load(project_id)
-        if _has_transcript_text(project):
+        if _transcript_ready_for_detection(project):
             return project
 
         active_job_id = active_transcription_jobs.get(project_id)
@@ -659,8 +667,15 @@ def create_app() -> Flask:
                 active_job = jobs.get(active_job_id)
                 if not active_job or active_job.get("status") != "running":
                     break
+                active_percent = parse_float(active_job.get("percent"), 0)
+                jobs.update(
+                    detection_job_id,
+                    percent=round(max(5, min(64, active_percent * 0.64)), 1),
+                    message="Aguardando checagem de fala...",
+                    details=active_job.get("details") or active_job.get("message") or "A transcricao ainda esta em andamento.",
+                )
             project = store.load(project_id)
-            if _has_transcript_text(project):
+            if _transcript_ready_for_detection(project):
                 return project
 
         if importlib.util.find_spec("faster_whisper") is None:
@@ -711,7 +726,7 @@ def create_app() -> Flask:
         intervals = project.get("intervals") or []
         if not intervals:
             return project
-        if not _has_transcript_text(project):
+        if not _transcript_ready_for_detection(project):
             preserved = preserved_user_intervals(intervals)
             if preserved != normalize_intervals(intervals):
                 project["intervals"] = preserved
@@ -746,7 +761,7 @@ def create_app() -> Flask:
                 jobs.update(job_id, percent=round(percent, 1), message=message, details="Aguarde. Em vídeos longos essa etapa pode levar alguns minutos.")
 
             fresh_project = _ensure_transcript_for_detection(project_id, job_id)
-            if not _has_transcript_text(fresh_project):
+            if not _transcript_ready_for_detection(fresh_project):
                 raise RuntimeError(
                     "A checagem de fala precisa terminar antes de montar as pausas. "
                     "Sem transcricao, o app nao cria cards por som baixo."
@@ -781,7 +796,7 @@ def create_app() -> Flask:
         data = request.get_json(force=True, silent=True) or {}
         settings = _parse_detection_settings(project, data)
 
-        if not _has_transcript_text(project):
+        if not _transcript_ready_for_detection(project):
             raise BadRequest(
                 "A checagem de fala precisa terminar antes de montar as pausas. "
                 "Sem transcricao, o app nao cria cards por som baixo."
