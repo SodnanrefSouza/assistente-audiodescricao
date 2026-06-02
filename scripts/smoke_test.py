@@ -37,7 +37,9 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260601-clean-intervals",
+            "20260602-usability",
+            "Ver exportações",
+            "Ver checklist",
         ):
             self.assertIn(expected, html)
 
@@ -53,6 +55,8 @@ class SmokeTest(unittest.TestCase):
             "function addIntervalAtCurrentTime",
             "function deleteInterval",
             "function intervalRowHtml",
+            "function applyTooltips",
+            "[5, 10, 15, 20, 30, 50]",
             "function timelineGroups",
             "playbackRate",
             "intervalPageSize",
@@ -66,6 +70,8 @@ class SmokeTest(unittest.TestCase):
             ".interval-row",
             ".interval-detail-card",
             ".compact-panel",
+            ".summary-action",
+            ".project-open",
             ".speed-control",
             "body[data-large-text=\"true\"]",
             "body[data-contrast=\"high\"]",

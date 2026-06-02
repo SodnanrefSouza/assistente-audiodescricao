@@ -26,7 +26,7 @@ const state = {
   selectedIntervalIndex: null,
   timelineSelectedGroupIndex: null,
   intervalPage: 1,
-  intervalPageSize: 24,
+  intervalPageSize: 10,
   intervalSaveTimers: new Map(),
   transcriptSaveTimer: null,
   notesSaveTimer: null,
@@ -127,6 +127,12 @@ function fmt(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
 }
 
+function shortText(value, max = 48) {
+  const text = String(value || '').trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(1, max - 1)).trim()}…`;
+}
+
 function fmtBytes(bytes) {
   bytes = Number(bytes || 0);
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -167,6 +173,41 @@ function statusLabel(status) {
     descartado: 'Descartado',
   };
   return labels[status] || status || 'Pendente';
+}
+
+function applyTooltips(root = document) {
+  const tips = [
+    ['#projectTitle', 'Dê um nome curto para identificar este trabalho na lista de projetos recentes.'],
+    ['#videoFile', 'Escolha o vídeo que será analisado. O arquivo fica salvo localmente no seu computador.'],
+    ['#uploadBtn', 'Cria um projeto novo com o vídeo escolhido.'],
+    ['#deleteProjectBtn', 'Remove o projeto atual e envia os arquivos dele para a lixeira interna do app.'],
+    ['#prevPauseBtn', 'Vai para a pausa anterior em relação ao tempo atual do vídeo.'],
+    ['#nextPendingBtn', 'Vai para o próximo intervalo que ainda não foi revisado.'],
+    ['#nextPauseBtn', 'Vai para a próxima pausa em relação ao tempo atual do vídeo.'],
+    ['#markReviewedBtn', 'Marca o intervalo atual como revisado.'],
+    ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para ver as pausas daquela parte do vídeo.'],
+    ['#audioInsightPanel', 'Resumo opcional para decidir quais pausas testar primeiro.'],
+    ['#noiseDb', 'Sensibilidade do volume baixo. -35 costuma funcionar bem. -20 aceita mais barulho; -50 exige quase silêncio.'],
+    ['#minSilence', 'Tempo mínimo que o som precisa ficar baixo para virar uma pausa candidata.'],
+    ['#minAdDuration', 'Menor tempo útil para caber uma narração curta de audiodescrição.'],
+    ['#previewMargin', 'Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.'],
+    ['#paddingStart', 'Corta um pedacinho do começo da pausa para evitar pegar final de fala.'],
+    ['#paddingEnd', 'Corta um pedacinho do final da pausa para evitar pegar início de fala.'],
+    ['#detectBtn', 'Analisa o vídeo e monta a lista de intervalos prováveis para audiodescrição.'],
+    ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
+    ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
+    ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
+    ['.export-panel summary', 'Clique para mostrar ou esconder os formatos de exportação.'],
+    ['.history-panel summary', 'Clique para ver versões salvas automaticamente e restaurar uma delas.'],
+    ['.help-panel', 'Guia rápido do fluxo de trabalho, do envio do vídeo até a exportação.'],
+    ['.settings-panel', 'Ajustes que controlam como o app encontra pausas no vídeo.'],
+    ['.intervals-panel', 'Lista paginada das pausas encontradas. Abra uma pausa para editar roteiro e gravar.'],
+  ];
+  tips.forEach(([selector, tip]) => {
+    root.querySelectorAll(selector).forEach(element => {
+      if (!element.getAttribute('title')) element.setAttribute('title', tip);
+    });
+  });
 }
 
 function saveVisualPrefs() {
@@ -451,14 +492,26 @@ function renderProjectList(projects) {
   els.projectList.className = 'project-list';
   els.projectList.innerHTML = '';
   projects.forEach(p => {
-    const item = document.createElement('div');
+    const item = document.createElement('article');
+    const title = p.title || 'Projeto sem nome';
+    const source = p.source_filename || '';
     item.className = 'project-item';
+    item.title = 'Projeto salvo neste computador. Clique em Abrir projeto para continuar.';
     item.innerHTML = `
-      <strong>${escapeHtml(p.title || 'Projeto sem nome')}</strong>
-      <small>${escapeHtml(p.source_filename || '')}</small><br>
-      <small>${p.interval_count || 0} intervalos • atualizado em ${escapeHtml(p.updated_at || '')}</small>
+      <button class="project-open" type="button" title="Abre este projeto salvo">
+        <strong title="${escapeHtml(title)}">${escapeHtml(shortText(title, 44))}</strong>
+        <small title="${escapeHtml(source)}">${escapeHtml(shortText(source, 42))}</small>
+        <small>${p.interval_count || 0} intervalos • ${escapeHtml(p.updated_at || '')}</small>
+      </button>
+      <details class="project-more">
+        <summary title="Mostra nome e arquivo completos sem abrir o projeto">Ver mais</summary>
+        <div>
+          <small><strong>Nome:</strong> ${escapeHtml(title)}</small>
+          <small><strong>Arquivo:</strong> ${escapeHtml(source || 'sem arquivo informado')}</small>
+        </div>
+      </details>
     `;
-    item.addEventListener('click', () => openProject(p.id));
+    item.querySelector('.project-open').addEventListener('click', () => openProject(p.id));
     els.projectList.appendChild(item);
   });
 }
@@ -478,7 +531,7 @@ function filteredIntervalList() {
 function pageForInterval(index, intervals = filteredIntervalList()) {
   const position = intervals.findIndex(item => Number(item.index) === Number(index));
   if (position < 0) return null;
-  return Math.floor(position / Math.max(1, Number(state.intervalPageSize || 24))) + 1;
+  return Math.floor(position / Math.max(1, Number(state.intervalPageSize || 10))) + 1;
 }
 
 function visibleIntervalIndexes() {
@@ -599,8 +652,8 @@ function setProject(project) {
   if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = false;
   if (els.playbackSpeed) els.playbackSpeed.disabled = false;
   els.videoPlayer.playbackRate = Number(els.playbackSpeed?.value || 1);
-  els.saveNotesBtn.disabled = false;
-  els.projectNotes.value = project.notes || '';
+  if (els.saveNotesBtn) els.saveNotesBtn.disabled = false;
+  if (els.projectNotes) els.projectNotes.value = project.notes || '';
   els.saveTranscriptBtn.disabled = false;
   els.refreshHistoryBtn.disabled = false;
   els.transcriptText.value = project.transcript?.text || '';
@@ -640,7 +693,7 @@ function clearProject() {
   if (els.addIntervalAtCurrentBtn) els.addIntervalAtCurrentBtn.disabled = true;
   if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = true;
   if (els.playbackSpeed) els.playbackSpeed.disabled = true;
-  els.saveNotesBtn.disabled = true;
+  if (els.saveNotesBtn) els.saveNotesBtn.disabled = true;
   els.saveTranscriptBtn.disabled = true;
   els.transcribeBtn.disabled = true;
   els.refreshHistoryBtn.disabled = true;
@@ -649,7 +702,7 @@ function clearProject() {
   els.nextPauseBtn.disabled = true;
   els.markReviewedBtn.disabled = true;
   els.exportButtons.forEach(btn => btn.disabled = true);
-  els.projectNotes.value = '';
+  if (els.projectNotes) els.projectNotes.value = '';
   els.transcriptText.value = '';
   setHtml(els.transcriptPreview, '');
   setHtml(els.allTranscriptList, '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>');
@@ -919,11 +972,23 @@ function renderAudioInsightPanel() {
   const project = state.project;
   const intervals = project?.intervals || [];
   if (!project) {
-    els.audioInsightPanel.innerHTML = '<strong>Checklist antes de gravar</strong><p class="hint">Abra um projeto para ver quais pausas são melhores para gravar primeiro.</p>';
+    els.audioInsightPanel.innerHTML = `
+      <summary title="Abre uma explicação simples de como escolher pausas para gravar">
+        <span><strong>Checklist antes de gravar</strong><small>Ajuda a escolher por onde começar.</small></span>
+        <span class="summary-action">Ver checklist ▾</span>
+      </summary>
+      <p class="hint">Abra um projeto para ver quais pausas são melhores para gravar primeiro.</p>
+    `;
     return;
   }
   if (!intervals.length) {
-    els.audioInsightPanel.innerHTML = '<strong>Checklist antes de gravar</strong><p class="hint">Clique em detectar pausas. Depois o sistema separa fala, silêncio limpo e fundo audível.</p>';
+    els.audioInsightPanel.innerHTML = `
+      <summary title="Abre uma explicação simples de como escolher pausas para gravar">
+        <span><strong>Checklist antes de gravar</strong><small>Ajuda a escolher por onde começar.</small></span>
+        <span class="summary-action">Ver checklist ▾</span>
+      </summary>
+      <p class="hint">Clique em detectar pausas. Depois o sistema separa fala, silêncio limpo e fundo audível.</p>
+    `;
     return;
   }
   const analyses = intervals.map(interval => audioSeparationForInterval(interval));
@@ -934,6 +999,7 @@ function renderAudioInsightPanel() {
   const quietCount = analyses.filter(item => item.bedState === 'quiet').length;
   const lowBackgroundCount = analyses.filter(item => item.bedState === 'low_background').length;
   const activeBackgroundCount = analyses.filter(item => item.bedState === 'active_background').length;
+  const unmeasuredBackgroundCount = analyses.filter(item => item.bedState === 'unknown').length;
   const threshold = Number(project.settings?.noise_db ?? els.noiseDb?.value ?? -35);
   const clearItems = intervals
     .filter(interval => audioSeparationForInterval(interval).recommendationState === 'clear')
@@ -957,7 +1023,7 @@ function renderAudioInsightPanel() {
   };
   const clearHtml = clearItems.length
     ? clearItems.map(interval => miniButton(interval, 'clear', 'verde: boa candidata para gravar')).join('')
-    : '<p class="hint">Nenhuma pausa verde ainda. Rode a checagem de voz/fundo ou revise os vídeos vermelhos e amarelos.</p>';
+    : `<p class="hint">Nenhuma pausa verde ainda. ${unmeasuredBackgroundCount ? 'Este projeto tem pausas com fundo não medido; rode “Detectar pausas automaticamente” de novo para medir o fundo e liberar verdes quando for seguro.' : 'Revise as amarelas e vermelhas antes de gravar.'}</p>`;
   const cautionHtml = cautionItems.length
     ? cautionItems.map(interval => miniButton(interval, 'caution', 'amarela: ouvir fundo antes')).join('')
     : '<p class="hint">Nenhuma pausa amarela encontrada.</p>';
@@ -965,25 +1031,32 @@ function renderAudioInsightPanel() {
     ? attentionItems.map(interval => miniButton(interval, 'speech', 'vermelha: fala perto da pausa')).join('')
     : '<p class="hint">Nenhuma pausa vermelha encontrada.</p>';
   els.audioInsightPanel.innerHTML = `
-    <div class="audio-insight-header">
-      <strong>Checklist antes de gravar</strong>
-      <span>som baixo configurado em ${threshold} dB</span>
+    <summary title="Abre uma explicação simples de como escolher pausas para gravar">
+      <span><strong>Checklist antes de gravar</strong><small>Use para decidir quais pausas testar primeiro.</small></span>
+      <span class="summary-action">Ver checklist ▾</span>
+    </summary>
+    <div class="audio-insight-body">
+      <div class="audio-insight-header">
+        <strong>Resumo simples</strong>
+        <span>sensibilidade atual: ${threshold} dB</span>
+      </div>
+      <p class="audio-purpose"><strong>Como usar:</strong> comece pelas verdes. Se não houver verde, abra uma amarela longa e use “Ver trecho”. Evite gravar nas vermelhas sem ouvir, porque pode ter fala perto da pausa.</p>
+      <div class="audio-summary-grid">
+        <span title="Total de pausas encontradas pelo sistema"><strong>${intervals.length}</strong> pausas encontradas</span>
+        <span title="Verde aparece quando não há fala relevante e o fundo foi medido como seguro"><strong>${clearCount}</strong> verdes: melhores para testar</span>
+        <span title="Amarelo quer dizer: não grave direto, ouça o fundo antes"><strong>${cautionCount}</strong> amarelas: ouvir fundo antes</span>
+        <span title="Vermelho quer dizer: há fala perto ou dentro da pausa"><strong>${speechCount}</strong> vermelhas: revisar fala</span>
+        <span title="Cinza quer dizer que ainda falta checagem de fala"><strong>${unknownCount}</strong> cinzas: falta checagem</span>
+        <span title="Medição de fundo já feita pelo FFmpeg"><strong>${quietCount}</strong> fundo limpo · <strong>${lowBackgroundCount + activeBackgroundCount}</strong> com fundo audível · <strong>${unmeasuredBackgroundCount}</strong> sem medição</span>
+      </div>
+      <p class="audio-purpose">Por que pode não ter verde? Verde exige duas confirmações: sem fala relevante e fundo medido como seguro. Em projetos antigos, muitas pausas ficam amarelas porque o fundo ainda não foi medido.</p>
+      <div class="audio-attention-title">Comece por estas, se houver</div>
+      <div class="audio-mini-list">${clearHtml}</div>
+      <div class="audio-attention-title">Ouça o fundo antes de gravar</div>
+      <div class="audio-mini-list">${cautionHtml}</div>
+      <div class="audio-attention-title">Revise fala antes de gravar</div>
+      <div class="audio-mini-list">${speechHtml}</div>
     </div>
-    <div class="audio-summary-grid">
-      <span><strong>${intervals.length}</strong> pausas achadas por som baixo</span>
-      <span><strong>${clearCount}</strong> verdes: melhores para testar</span>
-      <span><strong>${cautionCount}</strong> amarelas: ouvir fundo antes</span>
-      <span><strong>${speechCount}</strong> vermelhas: fala perto da pausa</span>
-      <span><strong>${unknownCount}</strong> cinzas: falta checagem</span>
-      <span><strong>${quietCount}</strong> silêncio limpo · <strong>${lowBackgroundCount + activeBackgroundCount}</strong> com fundo medido</span>
-    </div>
-    <p class="audio-purpose">O sistema não reconhece música por nome. Ele mede se há fundo audível e cruza isso com a checagem de voz. Verde é o melhor começo; amarelo pede ouvir o fundo antes; vermelho tem fala perto da pausa.</p>
-    <div class="audio-attention-title">Melhores pausas para gravar primeiro</div>
-    <div class="audio-mini-list">${clearHtml}</div>
-    <div class="audio-attention-title">Pausas sem fala, mas com fundo audível</div>
-    <div class="audio-mini-list">${cautionHtml}</div>
-    <div class="audio-attention-title">Pausas com fala para revisar</div>
-    <div class="audio-mini-list">${speechHtml}</div>
   `;
   els.audioInsightPanel.querySelectorAll('[data-index]').forEach(button => {
     button.addEventListener('click', () => goToInterval(Number(button.dataset.index), true));
@@ -1499,7 +1572,7 @@ function positionAtStart(interval) {
 
 function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
   if (!els.intervalPager) return;
-  const pageSize = Number(state.intervalPageSize || 24);
+  const pageSize = Number(state.intervalPageSize || 10);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (!total) {
     els.intervalPager.hidden = true;
@@ -1507,7 +1580,7 @@ function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
     return;
   }
   els.intervalPager.hidden = false;
-  const pageOptions = [12, 24, 48, 96].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size} por página</option>`).join('');
+  const pageOptions = [5, 10, 15, 20, 30, 50].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size} por página</option>`).join('');
   els.intervalPager.innerHTML = `
     <div class="pager-info">Mostrando ${startNumber}-${endNumber} de ${total} intervalo(s). Página ${state.intervalPage} de ${totalPages}.</div>
     <div class="pager-actions">
@@ -1529,7 +1602,7 @@ function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
     els.intervalPager.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
   });
   els.intervalPager.querySelector('[data-page-size]')?.addEventListener('change', (event) => {
-    state.intervalPageSize = Number(event.currentTarget.value || 24);
+    state.intervalPageSize = Number(event.currentTarget.value || 10);
     state.intervalPage = 1;
     renderIntervals();
   });
@@ -1691,7 +1764,7 @@ function renderIntervals() {
     return;
   }
 
-  const pageSize = Math.max(1, Number(state.intervalPageSize || 24));
+  const pageSize = Math.max(1, Number(state.intervalPageSize || 10));
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   state.intervalPage = Math.max(1, Math.min(totalPages, Number(state.intervalPage || 1)));
   const start = (state.intervalPage - 1) * pageSize;
@@ -1823,7 +1896,7 @@ async function deleteInterval(index) {
 }
 
 async function saveNotes() {
-  if (!state.project) return;
+  if (!state.project || !els.projectNotes) return;
   try {
     const res = await api(`/api/projects/${state.project.id}/notes`, {
       method: 'POST',
@@ -2081,8 +2154,8 @@ function bindEvents() {
     startAutomaticTranscription({ force });
   });
   els.deleteProjectBtn.addEventListener('click', deleteCurrentProject);
-  els.saveNotesBtn.addEventListener('click', saveNotes);
-  els.projectNotes.addEventListener('input', () => {
+  els.saveNotesBtn?.addEventListener('click', saveNotes);
+  els.projectNotes?.addEventListener('input', () => {
     clearTimeout(state.notesSaveTimer);
     state.notesSaveTimer = setTimeout(() => {
       if (state.project) saveNotes();
@@ -2137,6 +2210,7 @@ function bindEvents() {
 
 async function init() {
   applyVisualPrefs();
+  applyTooltips();
   bindEvents();
   await checkHealth();
   await loadProjects();

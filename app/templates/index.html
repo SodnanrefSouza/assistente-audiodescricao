@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260601-clean-intervals">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260602-usability">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -54,12 +54,7 @@
         <p class="hint">Tudo roda localmente no seu computador. Vídeos grandes são enviados em partes e ficam salvos em <code>data/projects</code>. O limite real depende do espaço em disco.</p>
       </section>
 
-      <section class="panel">
-        <h2>Projetos recentes</h2>
-        <div id="projectList" class="project-list empty">Nenhum projeto carregado ainda.</div>
-      </section>
-
-      <section class="panel help-panel">
+      <section class="panel help-panel" title="Resumo do fluxo principal da ferramenta. Use como guia rápido quando estiver perdido.">
         <h2>Como usar</h2>
         <ol>
           <li>Envie um vídeo.</li>
@@ -68,6 +63,11 @@
           <li>Escreva ou grave a descrição.</li>
           <li>Exporte roteiro, CSV, áudio ou vídeo final.</li>
         </ol>
+      </section>
+
+      <section class="panel" title="Lista de projetos salvos neste computador. Clique em Abrir para continuar um trabalho antigo.">
+        <h2>Projetos recentes</h2>
+        <div id="projectList" class="project-list empty">Nenhum projeto carregado ainda.</div>
       </section>
     </aside>
 
@@ -132,10 +132,16 @@
               <span><i class="legend-dot neutro"></i> cinza: falta checagem de fala</span>
             </div>
           </div>
-          <div id="audioInsightPanel" class="audio-insight-panel" aria-live="polite">
-            <strong>Checklist antes de gravar</strong>
+          <details id="audioInsightPanel" class="audio-insight-panel compact-panel" aria-live="polite">
+            <summary title="Abre um resumo para decidir quais pausas revisar primeiro">
+              <span>
+                <strong>Checklist antes de gravar</strong>
+                <small>Ajuda a escolher por onde começar.</small>
+              </span>
+              <span class="summary-action">Ver checklist ▾</span>
+            </summary>
             <p class="hint">Detecte as pausas para saber onde é melhor gravar a audiodescrição.</p>
-          </div>
+          </details>
           <p class="hint">Dica: use os botões “Ver trecho” nos intervalos para ouvir a pausa com contexto.</p>
         </section>
 
@@ -143,27 +149,27 @@
           <h2>3. Detectar pausas</h2>
           <div class="form-grid">
             <label>
-              Sensibilidade / ruído (dB)
-              <input id="noiseDb" class="input" type="number" step="1" value="-35">
-              <small>-35 é um bom começo. -20 aceita mais som ambiente; -50 só marca trechos bem baixos.</small>
+              Sensibilidade do som baixo (dB)
+              <input id="noiseDb" class="input" type="number" step="1" value="-35" title="dB é uma medida de volume. Em áudio digital, números negativos mais perto de zero aceitam mais som; números mais negativos exigem quase silêncio.">
+              <small>dB é volume. -35 é um bom começo. -20 aceita mais barulho; -50 só marca trechos quase silenciosos.</small>
             </label>
             <label>
-              Duração mínima do silêncio bruto (s)
-              <input id="minSilence" class="input" type="number" step="0.1" value="1.0">
-              <small>Tempo mínimo que o FFmpeg precisa enxergar como baixo volume.</small>
+              Duração mínima do trecho baixo (s)
+              <input id="minSilence" class="input" type="number" step="0.1" value="1.0" title="Quanto tempo o som precisa ficar baixo para virar uma pausa candidata. Aumente para ignorar pausas muito curtas.">
+              <small>Ex.: 1s quer dizer que o som precisa ficar baixo por pelo menos um segundo.</small>
             </label>
             <label>
-              Espaço mínimo útil para AD (s)
-              <input id="minAdDuration" class="input" type="number" step="0.1" value="0.8">
-              <small>Tempo mínimo que sobra depois dos cortes de início/fim.</small>
+              Tempo mínimo para narrar (s)
+              <input id="minAdDuration" class="input" type="number" step="0.1" value="0.8" title="Menor duração aceitável para inserir uma audiodescrição. Aumente se as pausas estiverem curtas demais para falar.">
+              <small>Menor espaço que deve sobrar para gravar uma frase curta.</small>
             </label>
             <label>
-              Margem antes/depois do preview (s)
-              <input id="previewMargin" class="input" type="number" step="0.5" value="2.0">
-              <small>Tempo extra para revisar o contexto.</small>
+              Margem para ouvir contexto (s)
+              <input id="previewMargin" class="input" type="number" step="0.5" value="2.0" title="Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.">
+              <small>Tempo extra antes/depois quando você clica em “Ver trecho”.</small>
             </label>
           </div>
-          <p class="settings-note">A detecção usa duas pistas. Primeiro encontra trechos de som baixo. Se houver transcrição, também procura espaços entre falas. Verde é uma boa candidata; amarelo não tem fala, mas pode ter música, trilha, ambiente ou ruído; vermelho tem fala perto da pausa e precisa ser ouvido antes de gravar.</p>
+          <p class="settings-note" title="Resumo simples da lógica de detecção">A detecção usa duas pistas: volume baixo e transcrição com tempos. Verde aparece quando não há fala relevante e o fundo foi medido como seguro. Amarelo pede ouvir o fundo antes. Vermelho tem fala perto da pausa.</p>
           <details class="advanced">
             <summary>Configurações avançadas</summary>
             <div class="form-grid compact">
@@ -184,9 +190,12 @@
 
       <section class="panel export-panel compact-panel">
         <details>
-          <summary>
-            <strong>4. Exportações</strong>
-            <span>Roteiro, planilhas, áudio AD e vídeo final.</span>
+          <summary class="disclosure-summary" title="Clique para abrir os botões de exportação">
+            <span>
+              <strong>4. Exportações</strong>
+              <small>Roteiro, planilhas, áudio AD e vídeo final.</small>
+            </span>
+            <span class="summary-action">Ver exportações ▾</span>
           </summary>
           <div class="export-actions">
             <button class="button" data-export="script" disabled>Roteiro .md</button>
@@ -199,12 +208,6 @@
             <button class="button success" data-export="final_video" disabled>Vídeo final .mp4</button>
           </div>
         </details>
-      </section>
-
-      <section class="panel notes-panel">
-        <h2>Observações gerais do projeto</h2>
-        <textarea id="projectNotes" class="textarea" rows="3" placeholder="Ex.: revisar com Ícaro, testar se as pausas são suficientes, validar com a turma..."></textarea>
-        <button class="button" id="saveNotesBtn" disabled>Salvar observações</button>
       </section>
 
       <section class="panel transcript-panel" hidden aria-hidden="true">
@@ -246,9 +249,12 @@
 
       <section class="panel history-panel compact-panel">
         <details>
-          <summary>
-            <strong>Histórico de trabalho</strong>
-            <span>Pontos de retorno salvos automaticamente.</span>
+          <summary class="disclosure-summary" title="Clique para ver pontos de restauração salvos automaticamente">
+            <span>
+              <strong>Histórico de trabalho</strong>
+              <small>Pontos de retorno salvos automaticamente.</small>
+            </span>
+            <span class="summary-action">Ver histórico ▾</span>
           </summary>
           <div class="section-header">
             <p class="muted">Use apenas se precisar voltar para uma versão anterior do projeto.</p>
@@ -262,7 +268,7 @@
         <div class="intervals-header">
           <div>
             <h2>5. Intervalos encontrados</h2>
-            <p class="muted">A lista mostra os intervalos em ordem. Clique em um item para ver detalhes, escrever o roteiro ou gravar.</p>
+            <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em um item para abrir os detalhes abaixo.</p>
           </div>
           <div class="filters">
             <input id="searchIntervals" class="input" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
@@ -306,6 +312,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260601-clean-intervals"></script>
+  <script src="/static/js/app.js?v=20260602-usability"></script>
 </body>
 </html>

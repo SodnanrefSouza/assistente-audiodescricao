@@ -129,6 +129,16 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   background: #fbfcff;
   padding: 12px;
 }
+.audio-insight-panel > summary {
+  margin: -2px;
+}
+.audio-insight-panel[open] > summary {
+  margin-bottom: 12px;
+}
+.audio-insight-body {
+  display: grid;
+  gap: 10px;
+}
 .timeline-header,
 .audio-insight-header {
   display: flex;
@@ -523,13 +533,34 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .project-item {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 12px;
-  cursor: pointer;
   background: #fbfcff;
+  padding: 8px;
 }
 .project-item:hover { border-color: var(--primary); }
-.project-item strong { display: block; }
-.project-item small { color: var(--muted); }
+.project-open {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  padding: 6px;
+}
+.project-open:hover strong { color: var(--primary); }
+.project-item strong { display: block; overflow-wrap: anywhere; }
+.project-item small { color: var(--muted); display: block; margin-top: 3px; overflow-wrap: anywhere; }
+.project-more {
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.project-more summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 900;
+  font-size: 13px;
+}
+.project-more div { display: grid; gap: 3px; margin-top: 6px; }
 .project-item strong,
 .project-item small,
 #currentMeta,
@@ -540,23 +571,52 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .help-panel li { margin: 8px 0; }
 
 .compact-panel details { width: 100%; }
-.compact-panel summary {
+.compact-panel summary,
+.disclosure-summary {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  color: var(--primary);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7faff;
+  padding: 12px;
+  min-height: var(--control-height);
 }
-.compact-panel summary strong { font-size: 1.05rem; color: var(--text); }
-.compact-panel summary span { color: var(--muted); font-size: 14px; font-weight: 700; }
+.compact-panel summary:hover,
+.disclosure-summary:hover { border-color: var(--primary); }
+.compact-panel summary strong { display: block; font-size: 1.05rem; color: var(--text); }
+.compact-panel summary small { display: block; color: var(--muted); font-size: 13px; font-weight: 700; margin-top: 2px; }
+.summary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border: 1px solid #cbd7ff;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--primary);
+  padding: 6px 10px;
+  font-weight: 900;
+  font-size: 13px;
+}
+.compact-panel details[open] .summary-action { background: var(--primary); color: #fff; border-color: var(--primary); }
 .compact-panel details[open] summary { margin-bottom: 14px; }
 .export-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
-.filters { display: flex; gap: 10px; min-width: 380px; }
+.filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 210px) minmax(150px, auto);
+  gap: 10px;
+  min-width: min(100%, 620px);
+  align-items: stretch;
+}
+.filters .button { white-space: nowrap; min-width: 150px; }
 .intervals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 16px; }
 .interval-workbench {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.25fr);
+  grid-template-columns: 1fr;
   gap: 16px;
   align-items: start;
 }
@@ -580,14 +640,15 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .interval-list {
   display: grid;
   gap: 8px;
-  max-height: min(70vh, 780px);
+  max-height: min(48vh, 520px);
   overflow: auto;
   padding: 10px;
 }
 .interval-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, 1fr) auto;
   gap: 6px;
+  align-items: center;
   width: 100%;
   border: 1px solid var(--line);
   border-left-width: 5px;
@@ -608,10 +669,8 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .interval-row.speech { border-left-color: #ff8a8a; }
 .interval-row.unknown { border-left-color: #cbd5e1; }
 .interval-row-main {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   gap: 10px;
-  align-items: baseline;
 }
 .interval-row-main strong { color: var(--text); }
 .interval-row-main span,
@@ -625,6 +684,7 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-end;
 }
 .rec-chip,
 .status-chip,
@@ -936,10 +996,13 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .workflow-actions { justify-content: flex-start; }
   .transcript-tools { grid-template-columns: 1fr; }
   .history-item { align-items: stretch; flex-direction: column; }
-  .filters { min-width: 0; flex-direction: column; }
+  .filters { min-width: 0; grid-template-columns: 1fr; }
+  .filters .button { width: 100%; }
   .export-actions { justify-content: flex-start; }
   .interval-workbench { grid-template-columns: 1fr; }
   .interval-list { max-height: 420px; }
+  .interval-row { grid-template-columns: 1fr; }
+  .interval-row-chips { justify-content: flex-start; }
 }
 
 @media (max-width: 720px) {
