@@ -34,6 +34,12 @@ from .core.ffmpeg_utils import (
     get_duration,
     recording_duration,
 )
+from .core.interval_tools import (
+    create_manual_interval,
+    merge_interval_candidates,
+    normalize_intervals,
+    speech_gap_intervals,
+)
 from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, safe_filename
 from .core.timecode import parse_float
 from .core.transcription import result_to_metadata, transcribe_video
@@ -216,6 +222,13 @@ def create_app() -> Flask:
                 transcript_data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
                 transcript_data["job_id"] = job_id
                 fresh_project["transcript"] = transcript_data
+                if fresh_project.get("intervals"):
+                    settings = _parse_detection_settings(fresh_project, {})
+                    fresh_project["intervals"] = _with_transcript_gap_candidates(
+                        fresh_project,
+                        fresh_project.get("intervals", []),
+                        settings,
+                    )
                 store.save(fresh_project, reason="Checagem de voz gerada")
                 jobs.update(
                     job_id,
@@ -537,6 +550,9 @@ def create_app() -> Flask:
         transcript["error"] = ""
         transcript["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         project["transcript"] = transcript
+        if project.get("intervals"):
+            settings = _parse_detection_settings(project, {})
+            project["intervals"] = _with_transcript_gap_candidates(project, project.get("intervals", []), settings)
         store.save(project, reason="Checagem de voz atualizada")
         return ok({"project": project})
 
@@ -570,6 +586,25 @@ def create_app() -> Flask:
             "preview_margin": clamp(parse_float(data.get("preview_margin"), settings.get("preview_margin", 2.0)), 0, 30),
         }
 
+    def _with_transcript_gap_candidates(
+        project: dict[str, Any],
+        intervals: list[dict[str, Any]],
+        settings: dict[str, float],
+    ) -> list[dict[str, Any]]:
+        transcript = project.get("transcript") or {}
+        transcript_text = transcript.get("text") or ""
+        duration = parse_float(project.get("duration"), 0)
+        speech_intervals = speech_gap_intervals(
+            transcript_text,
+            duration,
+            min_gap=settings["min_ad_duration"],
+            padding_start=settings["padding_start"],
+            padding_end=settings["padding_end"],
+        )
+        if not speech_intervals:
+            return normalize_intervals(intervals)
+        return merge_interval_candidates(intervals, speech_intervals)
+
     @app.post("/api/projects/<project_id>/detect/start")
     def detect_start_route(project_id: str):
         project = store.load(project_id)
@@ -593,6 +628,7 @@ def create_app() -> Flask:
                 padding_end=settings["padding_end"],
                 progress_callback=progress,
             )
+            intervals = _with_transcript_gap_candidates(fresh_project, intervals, settings)
             fresh_project["settings"] = settings
             fresh_project["intervals"] = intervals
             store.save(fresh_project, reason="Detecção automática de pausas")
@@ -623,10 +659,53 @@ def create_app() -> Flask:
             padding_start=settings["padding_start"],
             padding_end=settings["padding_end"],
         )
+        intervals = _with_transcript_gap_candidates(project, intervals, settings)
         project["settings"] = settings
         project["intervals"] = intervals
         store.save(project, reason="Detecção automática de pausas")
         return ok({"project": project, "message": f"{len(intervals)} intervalos encontrados."})
+
+    @app.post("/api/projects/<project_id>/intervals")
+    def create_interval(project_id: str):
+        project = store.load(project_id)
+        data = request.get_json(force=True, silent=True) or {}
+        duration = parse_float(project.get("duration"), 0)
+        start = max(0.0, parse_float(data.get("start"), 0))
+        fallback_length = parse_float((project.get("settings") or {}).get("min_ad_duration"), 2.0)
+        interval_length = max(0.2, parse_float(data.get("duration"), fallback_length))
+        end = parse_float(data.get("end"), start + interval_length)
+        if duration:
+            start = min(start, max(0.0, duration - 0.1))
+            end = min(max(start + 0.1, end), duration)
+        if end <= start:
+            raise BadRequest("O fim do intervalo precisa ser maior que o inicio.")
+
+        intervals = project.get("intervals", [])
+        intervals.append(create_manual_interval(start, end, data.get("title") or "Intervalo manual"))
+        project["intervals"] = normalize_intervals(intervals)
+        created = min(project["intervals"], key=lambda item: abs(parse_float(item.get("start"), 0) - start))
+        workflow = project.get("workflow") or {}
+        workflow["current_interval"] = created.get("index")
+        project["workflow"] = workflow
+        store.save(project, reason=f"Intervalo manual {created.get('index')} adicionado")
+        return ok({"project": project, "interval": created, "message": "Intervalo manual adicionado."})
+
+    @app.delete("/api/projects/<project_id>/intervals/<int:index>")
+    def delete_interval(project_id: str, index: int):
+        project = store.load(project_id)
+        intervals = project.get("intervals", [])
+        if index < 1 or index > len(intervals):
+            raise NotFound("Intervalo nao encontrado.")
+        interval = intervals[index - 1]
+        store.trash_recording(project_id, interval.get("recording_filename"))
+        del intervals[index - 1]
+        project["intervals"] = normalize_intervals(intervals)
+        workflow = project.get("workflow") or {}
+        if workflow.get("current_interval") == index:
+            workflow["current_interval"] = project["intervals"][0]["index"] if project["intervals"] else None
+        project["workflow"] = workflow
+        store.save(project, reason=f"Intervalo {index} excluido")
+        return ok({"project": project, "message": "Intervalo excluido."})
 
     @app.post("/api/projects/<project_id>/intervals/<int:index>")
     def update_interval(project_id: str, index: int):

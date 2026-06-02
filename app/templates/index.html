@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260526-audio-background">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260601-clean-intervals">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -24,7 +24,7 @@
       </div>
       <div class="visual-prefs" aria-label="Preferências visuais">
         <button class="pref-toggle" id="contrastToggle" type="button" aria-pressed="false" title="Aumenta contraste de texto, bordas e foco em toda a tela">Alto contraste</button>
-        <button class="pref-toggle" id="largeTextToggle" type="button" aria-pressed="false" title="Aumenta textos, campos, botões e cards na interface inteira">Texto maior</button>
+        <button class="pref-toggle" id="largeTextToggle" type="button" aria-pressed="false" title="Aumenta textos, campos, botões e áreas de revisão na interface inteira">Texto maior</button>
         <button class="pref-toggle" id="reducedMotionToggle" type="button" aria-pressed="false" title="Remove animações e rolagens suaves quando possível">Menos movimento</button>
       </div>
     </div>
@@ -115,6 +115,7 @@
                 <option value="2">2x</option>
               </select>
             </label>
+            <button class="button" id="addIntervalAtCurrentBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">+ Adicionar intervalo aqui</button>
           </div>
           <div class="timeline-panel" aria-label="Linha do tempo das pausas">
             <div class="timeline-header">
@@ -125,10 +126,10 @@
               <p class="hint">Nenhum intervalo detectado ainda.</p>
             </div>
             <div class="timeline-legend" aria-hidden="true">
-              <span><i class="legend-dot sem-fala"></i> verde: melhor para gravar</span>
-              <span><i class="legend-dot fundo"></i> amarelo: fundo audível</span>
-              <span><i class="legend-dot fala"></i> vermelho: fala perto da pausa</span>
-              <span><i class="legend-dot neutro"></i> cinza: sem checagem</span>
+              <span><i class="legend-dot sem-fala"></i> verde: boa candidata para gravar</span>
+              <span><i class="legend-dot fundo"></i> amarelo: ouvir o fundo antes</span>
+              <span><i class="legend-dot fala"></i> vermelho: fala perto ou dentro da pausa</span>
+              <span><i class="legend-dot neutro"></i> cinza: falta checagem de fala</span>
             </div>
           </div>
           <div id="audioInsightPanel" class="audio-insight-panel" aria-live="polite">
@@ -162,7 +163,7 @@
               <small>Tempo extra para revisar o contexto.</small>
             </label>
           </div>
-          <p class="settings-note">A detecção primeiro acha trechos de som baixo. Depois mede o fundo da pausa e cruza com a checagem de voz: verde é melhor para gravar, amarelo tem fundo audível como música/trilha/ambiente/ruído, vermelho tem fala perto da pausa e cinza ainda não foi checado.</p>
+          <p class="settings-note">A detecção usa duas pistas. Primeiro encontra trechos de som baixo. Se houver transcrição, também procura espaços entre falas. Verde é uma boa candidata; amarelo não tem fala, mas pode ter música, trilha, ambiente ou ruído; vermelho tem fala perto da pausa e precisa ser ouvido antes de gravar.</p>
           <details class="advanced">
             <summary>Configurações avançadas</summary>
             <div class="form-grid compact">
@@ -181,21 +182,23 @@
         </section>
       </section>
 
-      <section class="panel export-panel">
-        <div>
-          <h2>4. Exportações</h2>
-          <p class="muted">Exporte roteiro, planilhas, faixa de audiodescrição ou vídeo final com a narração misturada.</p>
-        </div>
-        <div class="export-actions">
-          <button class="button" data-export="script" disabled>Roteiro .md</button>
-          <button class="button" data-export="csv" disabled>Planilha .csv</button>
-          <button class="button" data-export="srt" disabled>Roteiro .srt</button>
-          <button class="button" data-export="premiere_csv" disabled>CSV Premiere</button>
-          <button class="button" data-export="davinci_csv" disabled>CSV DaVinci</button>
-          <button class="button" data-export="json" disabled>Projeto .json</button>
-          <button class="button success" data-export="ad_audio" disabled>Faixa AD .wav</button>
-          <button class="button success" data-export="final_video" disabled>Vídeo final .mp4</button>
-        </div>
+      <section class="panel export-panel compact-panel">
+        <details>
+          <summary>
+            <strong>4. Exportações</strong>
+            <span>Roteiro, planilhas, áudio AD e vídeo final.</span>
+          </summary>
+          <div class="export-actions">
+            <button class="button" data-export="script" disabled>Roteiro .md</button>
+            <button class="button" data-export="csv" disabled>Planilha .csv</button>
+            <button class="button" data-export="srt" disabled>Roteiro .srt</button>
+            <button class="button" data-export="premiere_csv" disabled>CSV Premiere</button>
+            <button class="button" data-export="davinci_csv" disabled>CSV DaVinci</button>
+            <button class="button" data-export="json" disabled>Projeto .json</button>
+            <button class="button success" data-export="ad_audio" disabled>Faixa AD .wav</button>
+            <button class="button success" data-export="final_video" disabled>Vídeo final .mp4</button>
+          </div>
+        </details>
       </section>
 
       <section class="panel notes-panel">
@@ -241,26 +244,29 @@
         </details>
       </section>
 
-      <section class="panel history-panel">
-        <div class="section-header">
-          <div>
-            <h2>Histórico de trabalho</h2>
-            <p class="muted">Cada salvamento cria um ponto de retorno local para evitar perdas.</p>
+      <section class="panel history-panel compact-panel">
+        <details>
+          <summary>
+            <strong>Histórico de trabalho</strong>
+            <span>Pontos de retorno salvos automaticamente.</span>
+          </summary>
+          <div class="section-header">
+            <p class="muted">Use apenas se precisar voltar para uma versão anterior do projeto.</p>
+            <button class="button" id="refreshHistoryBtn" disabled>Atualizar histórico</button>
           </div>
-          <button class="button" id="refreshHistoryBtn" disabled>Atualizar histórico</button>
-        </div>
-        <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
+          <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
+        </details>
       </section>
 
       <section class="panel intervals-panel">
         <div class="intervals-header">
           <div>
             <h2>5. Intervalos encontrados</h2>
-            <p class="muted">Cada card representa um espaço provável para inserir audiodescrição.</p>
+            <p class="muted">A lista mostra os intervalos em ordem. Clique em um item para ver detalhes, escrever o roteiro ou gravar.</p>
           </div>
           <div class="filters">
-            <input id="searchIntervals" class="input" placeholder="Buscar no roteiro..." title="Filtra os cards pelo título, roteiro ou observações">
-            <select id="statusFilter" class="input" title="Filtra os cards pelo status de revisão">
+            <input id="searchIntervals" class="input" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
+            <select id="statusFilter" class="input" title="Filtra os intervalos pelo status de revisão">
               <option value="">Todos os status</option>
               <option value="pendente">Pendente</option>
               <option value="roteirizado">Roteirizado</option>
@@ -268,6 +274,7 @@
               <option value="revisado">Revisado</option>
               <option value="descartado">Descartado</option>
             </select>
+            <button class="button" id="addIntervalListBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">Adicionar no tempo atual</button>
           </div>
         </div>
         <div id="intervalPager" class="interval-pager" hidden aria-live="polite"></div>
@@ -299,6 +306,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260526-audio-background"></script>
+  <script src="/static/js/app.js?v=20260601-clean-intervals"></script>
 </body>
 </html>

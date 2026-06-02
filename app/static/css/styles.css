@@ -539,9 +539,142 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .help-panel ol { margin: 0; padding-left: 20px; color: #2d3b51; }
 .help-panel li { margin: 8px 0; }
 
+.compact-panel details { width: 100%; }
+.compact-panel summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--primary);
+}
+.compact-panel summary strong { font-size: 1.05rem; color: var(--text); }
+.compact-panel summary span { color: var(--muted); font-size: 14px; font-weight: 700; }
+.compact-panel details[open] summary { margin-bottom: 14px; }
 .export-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 .filters { display: flex; gap: 10px; min-width: 380px; }
 .intervals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 16px; }
+.interval-workbench {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
+.interval-list-panel,
+.interval-detail-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcff;
+}
+.interval-list-header {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.interval-list-header span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.interval-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(70vh, 780px);
+  overflow: auto;
+  padding: 10px;
+}
+.interval-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.interval-row:hover,
+.interval-row.current {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(49,87,213,0.14);
+}
+.interval-row.clear { border-left-color: #51c98b; }
+.interval-row.caution { border-left-color: #ffca66; }
+.interval-row.speech { border-left-color: #ff8a8a; }
+.interval-row.unknown { border-left-color: #cbd5e1; }
+.interval-row-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+.interval-row-main strong { color: var(--text); }
+.interval-row-main span,
+.interval-row-meta {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.interval-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.rec-chip,
+.status-chip,
+.row-open {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+.rec-chip.clear { background: #e7fff2; color: #087647; }
+.rec-chip.caution { background: #fff4db; color: #865600; }
+.rec-chip.speech { background: #fff0f0; color: #a32b2b; }
+.rec-chip.unknown { background: #eef2f7; color: #56657a; }
+.status-chip { background: #eef3ff; color: var(--primary); }
+.row-open { margin-left: auto; background: transparent; color: var(--primary); }
+.interval-detail-card {
+  padding: 16px;
+}
+.interval-detail-card.clear { background: #f8fffb; }
+.interval-detail-card.caution { background: #fffdf7; }
+.interval-detail-card.speech { background: #fffafa; }
+.interval-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.interval-detail-header h3 { margin: 6px 0; }
+.interval-detail-reason {
+  margin: 8px 0 0;
+  color: #2d3b51;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.interval-more {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 10px;
+  margin-top: 10px;
+}
+.interval-more summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 900;
+}
+.interval-more[open] summary { margin-bottom: 10px; }
 .empty-state { display: block; text-align: center; padding: 36px; border: 1px dashed var(--line); border-radius: var(--radius); background: #fbfcff; }
 .interval-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; background: #fbfcff; }
 .interval-card.current { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(49,87,213,0.16); }
@@ -805,6 +938,8 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .history-item { align-items: stretch; flex-direction: column; }
   .filters { min-width: 0; flex-direction: column; }
   .export-actions { justify-content: flex-start; }
+  .interval-workbench { grid-template-columns: 1fr; }
+  .interval-list { max-height: 420px; }
 }
 
 @media (max-width: 720px) {
@@ -1023,6 +1158,10 @@ body[data-contrast="high"] .progress-row {
 
 body[data-contrast="high"] .panel,
 body[data-contrast="high"] .interval-card,
+body[data-contrast="high"] .interval-list-panel,
+body[data-contrast="high"] .interval-row,
+body[data-contrast="high"] .interval-detail-card,
+body[data-contrast="high"] .interval-more,
 body[data-contrast="high"] .project-item,
 body[data-contrast="high"] .transcript-hit,
 body[data-contrast="high"] .transcript-context,
@@ -1183,6 +1322,9 @@ body[data-large-text="true"] .timeline-lane-help,
 body[data-large-text="true"] .timeline-detail-title,
 body[data-large-text="true"] .timeline-detail p,
 body[data-large-text="true"] .pager-info,
+body[data-large-text="true"] .interval-row-meta,
+body[data-large-text="true"] .interval-list-header span,
+body[data-large-text="true"] .interval-detail-reason,
 body[data-large-text="true"] .project-item,
 body[data-large-text="true"] .history-item,
 body[data-large-text="true"] .transcript-block,
@@ -1213,6 +1355,9 @@ body[data-large-text="true"] .audio-attention-title {
 body[data-large-text="true"] .eyebrow,
 body[data-large-text="true"] .badge,
 body[data-large-text="true"] .audio-pill,
+body[data-large-text="true"] .rec-chip,
+body[data-large-text="true"] .status-chip,
+body[data-large-text="true"] .row-open,
 body[data-large-text="true"] .timeline-ruler,
 body[data-large-text="true"] .timeline-lane-label {
   font-size: 0.95rem;

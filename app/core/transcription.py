@@ -197,6 +197,14 @@ def result_to_metadata(result: TranscriptionResult) -> dict[str, Any]:
     return {
         "text": result.text,
         "plain_text": result.plain_text,
+        "segments": [
+            {
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text,
+            }
+            for segment in result.segments
+        ],
         "source": "automatic",
         "status": "done",
         "language": result.language,

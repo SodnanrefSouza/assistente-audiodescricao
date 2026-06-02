@@ -23,6 +23,7 @@ const state = {
   maxChunkMb: 256,
   currentUploadId: null,
   currentIntervalIndex: null,
+  selectedIntervalIndex: null,
   timelineSelectedGroupIndex: null,
   intervalPage: 1,
   intervalPageSize: 24,
@@ -72,6 +73,7 @@ const els = {
   back2Btn: $('back2Btn'),
   playPauseBtn: $('playPauseBtn'),
   forward2Btn: $('forward2Btn'),
+  addIntervalAtCurrentBtn: $('addIntervalAtCurrentBtn'),
   noiseDb: $('noiseDb'),
   minSilence: $('minSilence'),
   minAdDuration: $('minAdDuration'),
@@ -85,6 +87,7 @@ const els = {
   intervalPager: $('intervalPager'),
   searchIntervals: $('searchIntervals'),
   statusFilter: $('statusFilter'),
+  addIntervalListBtn: $('addIntervalListBtn'),
   projectNotes: $('projectNotes'),
   saveNotesBtn: $('saveNotesBtn'),
   transcriptText: $('transcriptText'),
@@ -479,8 +482,8 @@ function pageForInterval(index, intervals = filteredIntervalList()) {
 }
 
 function visibleIntervalIndexes() {
-  return Array.from(els.intervalsContainer.querySelectorAll('.interval-card'))
-    .map(card => Number(card.id.replace('interval-', '')))
+  return Array.from(els.intervalsContainer.querySelectorAll('[data-interval-row]'))
+    .map(row => Number(row.dataset.index))
     .filter(Boolean);
 }
 
@@ -503,17 +506,17 @@ function goToInterval(index, autoplay = true) {
   const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
   if (!interval) return;
   state.currentIntervalIndex = interval.index;
+  state.selectedIntervalIndex = interval.index;
   const visible = visibleIntervalIndexes();
   if (!visible.includes(Number(index))) {
     showIntervalPage(index, true);
   } else {
-    document.querySelectorAll('.interval-card.current').forEach(card => card.classList.remove('current'));
-    document.getElementById(`interval-${index}`)?.classList.add('current');
+    renderIntervals();
   }
-  const card = document.getElementById(`interval-${index}`);
-  if (card) {
-    card.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
-    card.focus({ preventScroll: true });
+  const detail = document.getElementById(`interval-${index}`) || document.getElementById('intervalDetail');
+  if (detail) {
+    detail.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    detail.focus({ preventScroll: true });
   }
   if (autoplay) playSegment(interval);
   updateWorkflowPanel();
@@ -577,7 +580,10 @@ async function openProject(projectId) {
 
 function setProject(project) {
   state.project = project;
-  state.currentIntervalIndex = project.workflow?.current_interval || project.intervals?.[0]?.index || null;
+  const savedCurrent = project.workflow?.current_interval || null;
+  const hasSavedCurrent = (project.intervals || []).some(interval => Number(interval.index) === Number(savedCurrent));
+  state.currentIntervalIndex = hasSavedCurrent ? savedCurrent : project.intervals?.[0]?.index || null;
+  state.selectedIntervalIndex = state.currentIntervalIndex;
   state.timelineSelectedGroupIndex = null;
   state.intervalPage = 1;
   state.transcriptSegments = parseTranscript(project.transcript?.text || '');
@@ -589,6 +595,8 @@ function setProject(project) {
   els.back2Btn.disabled = false;
   els.playPauseBtn.disabled = false;
   els.forward2Btn.disabled = false;
+  if (els.addIntervalAtCurrentBtn) els.addIntervalAtCurrentBtn.disabled = false;
+  if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = false;
   if (els.playbackSpeed) els.playbackSpeed.disabled = false;
   els.videoPlayer.playbackRate = Number(els.playbackSpeed?.value || 1);
   els.saveNotesBtn.disabled = false;
@@ -616,6 +624,7 @@ function setProject(project) {
 function clearProject() {
   state.project = null;
   state.currentIntervalIndex = null;
+  state.selectedIntervalIndex = null;
   state.timelineSelectedGroupIndex = null;
   state.intervalPage = 1;
   state.transcriptSegments = [];
@@ -628,6 +637,8 @@ function clearProject() {
   els.back2Btn.disabled = true;
   els.playPauseBtn.disabled = true;
   els.forward2Btn.disabled = true;
+  if (els.addIntervalAtCurrentBtn) els.addIntervalAtCurrentBtn.disabled = true;
+  if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = true;
   if (els.playbackSpeed) els.playbackSpeed.disabled = true;
   els.saveNotesBtn.disabled = true;
   els.saveTranscriptBtn.disabled = true;
@@ -849,7 +860,7 @@ function audioSeparationForInterval(interval) {
     ? 'speech'
     : !transcriptReady
       ? 'unknown'
-      : background.state === 'active_background'
+      : background.state === 'active_background' || background.state === 'unknown'
         ? 'caution'
         : 'clear';
   const speechLabel = speechState === 'speech'
@@ -948,7 +959,7 @@ function renderAudioInsightPanel() {
     ? clearItems.map(interval => miniButton(interval, 'clear', 'verde: boa candidata para gravar')).join('')
     : '<p class="hint">Nenhuma pausa verde ainda. Rode a checagem de voz/fundo ou revise os vídeos vermelhos e amarelos.</p>';
   const cautionHtml = cautionItems.length
-    ? cautionItems.map(interval => miniButton(interval, 'caution', 'amarela: sem fala, mas com fundo audível')).join('')
+    ? cautionItems.map(interval => miniButton(interval, 'caution', 'amarela: ouvir fundo antes')).join('')
     : '<p class="hint">Nenhuma pausa amarela encontrada.</p>';
   const speechHtml = attentionItems.length
     ? attentionItems.map(interval => miniButton(interval, 'speech', 'vermelha: fala perto da pausa')).join('')
@@ -961,12 +972,12 @@ function renderAudioInsightPanel() {
     <div class="audio-summary-grid">
       <span><strong>${intervals.length}</strong> pausas achadas por som baixo</span>
       <span><strong>${clearCount}</strong> verdes: melhores para testar</span>
-      <span><strong>${cautionCount}</strong> amarelas: fundo audível, ouvir antes</span>
+      <span><strong>${cautionCount}</strong> amarelas: ouvir fundo antes</span>
       <span><strong>${speechCount}</strong> vermelhas: fala perto da pausa</span>
       <span><strong>${unknownCount}</strong> cinzas: falta checagem</span>
       <span><strong>${quietCount}</strong> silêncio limpo · <strong>${lowBackgroundCount + activeBackgroundCount}</strong> com fundo medido</span>
     </div>
-    <p class="audio-purpose">O sistema não reconhece música por nome. Ele mede se há fundo audível na pausa e cruza isso com a checagem de voz. Verde é o melhor começo; amarelo pode ter música, trilha, ambiente ou ruído; vermelho tem fala perto da pausa.</p>
+    <p class="audio-purpose">O sistema não reconhece música por nome. Ele mede se há fundo audível e cruza isso com a checagem de voz. Verde é o melhor começo; amarelo pede ouvir o fundo antes; vermelho tem fala perto da pausa.</p>
     <div class="audio-attention-title">Melhores pausas para gravar primeiro</div>
     <div class="audio-mini-list">${clearHtml}</div>
     <div class="audio-attention-title">Pausas sem fala, mas com fundo audível</div>
@@ -1024,7 +1035,7 @@ function timelineCellHtml(group, maxCount, currentIndex, lane, selectedGroupInde
           ? 'caution'
           : 'clear';
   const label = first
-    ? `Abrir região: ${group.intervals.length} pausa(s) entre ${fmtClock(group.start)} e ${fmtClock(group.end)}. ${group.clearCount} verdes; ${group.cautionCount} amarelas com fundo audível; ${group.speechCount} vermelhas com fala; ${group.unknownCount} sem checagem.`
+    ? `Abrir região: ${group.intervals.length} pausa(s) entre ${fmtClock(group.start)} e ${fmtClock(group.end)}. ${group.clearCount} verdes; ${group.cautionCount} amarelas para ouvir o fundo; ${group.speechCount} vermelhas com fala; ${group.unknownCount} sem checagem.`
     : `Sem pausa entre ${fmtClock(group.start)} e ${fmtClock(group.end)}.`;
   const className = `timeline-cell ${stateClass} ${hasCurrent ? 'current' : ''} ${selected ? 'selected' : ''}`;
   if (!first) {
@@ -1055,7 +1066,7 @@ function timelineDetailHtml(group) {
     lanes[lane] = left;
     const info = audioSeparationForInterval(interval);
     const current = Number(interval.index) === Number(state.currentIntervalIndex);
-    const label = `Pausa ${interval.index}. ${info.recommendationLabel}. ${info.bedLabel}. Começa em ${fmt(interval.start)} e tem ${Number(interval.duration || 0).toFixed(1)} segundos. Clique para abrir o card e posicionar o vídeo.`;
+    const label = `Pausa ${interval.index}. ${info.recommendationLabel}. ${info.bedLabel}. Começa em ${fmt(interval.start)} e tem ${Number(interval.duration || 0).toFixed(1)} segundos. Clique para abrir os detalhes e posicionar o vídeo.`;
     return `<button class="timeline-detail-marker ${info.recommendationState} ${current ? 'current' : ''}" type="button" data-index="${interval.index}" style="left:${left}%; --lane:${lane};" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span>${interval.index}</span></button>`;
   }).join('');
   const laneCount = Math.max(1, lanes.length);
@@ -1066,7 +1077,7 @@ function timelineDetailHtml(group) {
         <span>${fmtClock(group.start)} até ${fmtClock(group.end)} | ${group.intervals.length} pausa(s)</span>
       </div>
       <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" aria-label="Pausas individuais da região escolhida">${markers}</div>
-      <p>Clique em uma pausa. O vídeo vai para o tempo certo e a página desce até o card dela.</p>
+      <p>Clique em uma pausa. O vídeo vai para o tempo certo e os detalhes dela aparecem abaixo.</p>
     </div>
   `;
 }
@@ -1221,7 +1232,7 @@ function transcriptContextHtml(interval) {
   const transcriptText = transcript.text || '';
   if (!transcriptText.trim()) {
     if (transcript.status === 'running') {
-      return `<p class="hint">A transcrição automática ainda está rodando. Quando terminar, este card mostrará as falas antes e depois da pausa.</p>${fullButton}`;
+      return `<p class="hint">A transcrição automática ainda está rodando. Quando terminar, os detalhes da pausa mostrarão as falas antes e depois.</p>${fullButton}`;
     }
     if (transcript.status === 'error') {
       return `<p class="hint">A transcrição automática falhou. Use o painel de transcrição para tentar novamente.</p>${fullButton}`;
@@ -1498,13 +1509,13 @@ function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
   els.intervalPager.hidden = false;
   const pageOptions = [12, 24, 48, 96].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size} por página</option>`).join('');
   els.intervalPager.innerHTML = `
-    <div class="pager-info">Mostrando ${startNumber}-${endNumber} de ${total} card(s). Página ${state.intervalPage} de ${totalPages}.</div>
+    <div class="pager-info">Mostrando ${startNumber}-${endNumber} de ${total} intervalo(s). Página ${state.intervalPage} de ${totalPages}.</div>
     <div class="pager-actions">
-      <button class="button" type="button" data-page="prev" ${state.intervalPage <= 1 ? 'disabled' : ''} title="Mostra a página anterior de cards">Anterior</button>
-      <select class="input page-size-input" data-page-size title="Quantidade de cards carregados por vez para evitar lentidão">
+      <button class="button" type="button" data-page="prev" ${state.intervalPage <= 1 ? 'disabled' : ''} title="Mostra a página anterior de intervalos">Anterior</button>
+      <select class="input page-size-input" data-page-size title="Quantidade de intervalos carregados por vez para evitar lentidão">
         ${pageOptions}
       </select>
-      <button class="button" type="button" data-page="next" ${state.intervalPage >= totalPages ? 'disabled' : ''} title="Mostra a próxima página de cards">Próxima</button>
+      <button class="button" type="button" data-page="next" ${state.intervalPage >= totalPages ? 'disabled' : ''} title="Mostra a próxima página de intervalos">Próxima</button>
     </div>
   `;
   els.intervalPager.querySelector('[data-page="prev"]')?.addEventListener('click', () => {
@@ -1524,6 +1535,138 @@ function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
   });
 }
 
+function intervalSourceLabel(interval) {
+  const source = String(interval.detection_source || '').toLowerCase();
+  if (source.includes('manual')) return 'adicionado manualmente';
+  if (source.includes('fala') && source.includes('som')) return 'som baixo + espaço entre falas';
+  if (source.includes('fala')) return 'espaço entre falas';
+  return 'som baixo';
+}
+
+function intervalRecommendationText(info) {
+  if (info.recommendationState === 'clear') return 'Boa candidata';
+  if (info.recommendationState === 'caution') return 'Ouça o fundo';
+  if (info.recommendationState === 'speech') return 'Revisar fala';
+  return 'Falta checagem';
+}
+
+function intervalReasonText(info) {
+  if (info.recommendationState === 'clear') return 'A checagem não encontrou fala relevante nessa pausa.';
+  if (info.recommendationState === 'caution' && info.bedState === 'unknown') return 'Não há fala relevante, mas o fundo ainda não foi medido. Ouça antes de gravar.';
+  if (info.recommendationState === 'caution') return 'Não há fala relevante, mas existe fundo audível. Ouça antes de gravar.';
+  if (info.recommendationState === 'speech') return 'Existe fala perto ou dentro da pausa. Revise antes de gravar.';
+  return 'A pausa foi encontrada, mas ainda falta checar fala/transcrição.';
+}
+
+function intervalRowHtml(interval) {
+  const info = audioSeparationForInterval(interval);
+  const selected = Number(interval.index) === Number(state.selectedIntervalIndex || state.currentIntervalIndex);
+  const title = interval.title || `Audiodescrição ${interval.index}`;
+  return `
+    <button class="interval-row ${selected ? 'current' : ''} ${info.recommendationState}" type="button" data-interval-row data-index="${interval.index}" aria-current="${selected ? 'true' : 'false'}" title="Abrir detalhes da pausa ${interval.index}">
+      <span class="interval-row-main">
+        <strong>Pausa ${interval.index}</strong>
+        <span>${escapeHtml(title)}</span>
+      </span>
+      <span class="interval-row-meta">${fmt(interval.start)} · ${Number(interval.duration || 0).toFixed(1)}s · ${intervalSourceLabel(interval)}</span>
+      <span class="interval-row-chips">
+        <span class="rec-chip ${info.recommendationState}">${intervalRecommendationText(info)}</span>
+        <span class="status-chip">${statusLabel(interval.status || 'pendente')}</span>
+        <span class="row-open">Ver detalhes</span>
+      </span>
+    </button>
+  `;
+}
+
+function intervalDetailHtml(project, interval) {
+  const info = audioSeparationForInterval(interval);
+  const badgeClass = interval.quality || 'curto';
+  const recordingAudio = interval.recording_filename
+    ? `<audio class="recording-preview" controls src="/media/${project.id}/recordings/${encodeURIComponent(interval.recording_filename)}"></audio>`
+    : '<p class="hint">Nenhuma gravação enviada ainda.</p>';
+  const warning = interval.warning ? `<div class="interval-warning">${escapeHtml(interval.warning)}</div>` : '';
+  const title = interval.title || `Audiodescrição ${interval.index}`;
+  return `
+    <article class="interval-detail-card ${info.recommendationState}" id="interval-${interval.index}" data-index="${interval.index}" tabindex="-1" aria-live="polite">
+      <header class="interval-detail-header">
+        <div>
+          <span class="badge ${badgeClass}">${escapeHtml(interval.quality || '')}</span>
+          <h3>Pausa ${interval.index}: ${escapeHtml(title)}</h3>
+          <p class="interval-meta">
+            Começa em <strong>${fmt(interval.start)}</strong>, termina em <strong>${fmt(interval.end)}</strong> e tem <strong>${Number(interval.duration || 0).toFixed(2)}s</strong>.
+            Origem: ${escapeHtml(intervalSourceLabel(interval))}.
+          </p>
+          <p class="interval-detail-reason">${escapeHtml(intervalReasonText(info))}</p>
+        </div>
+        <button class="button danger" data-action="delete-interval" title="Remove este intervalo da lista">Excluir intervalo</button>
+      </header>
+
+      <div class="interval-actions">
+        <button class="button" data-action="play" title="Toca este trecho com a margem configurada, para revisar o contexto">Ver trecho</button>
+        <button class="button" data-action="jump" title="Vai para o início útil da pausa e começa o vídeo">Ir ao início</button>
+        <button class="button" data-action="position" title="Posiciona o vídeo no início da pausa sem tocar">Posicionar e pausar</button>
+        <button class="button" data-action="mark-current" title="Marca este intervalo como o atual da revisão">Usar como atual</button>
+      </div>
+
+      <details class="interval-more" open>
+        <summary>Editar roteiro e status</summary>
+        <div class="status-row">
+          <label>Título
+            <input class="input title-input" value="${escapeHtml(interval.title || '')}">
+          </label>
+          <label>Status
+            <select class="input status-input" title="Use o status para controlar o andamento deste intervalo">
+              ${['pendente','roteirizado','gravado','revisado','descartado'].map(s => `<option value="${s}" ${interval.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+        <label>Roteiro da audiodescrição
+          <textarea class="textarea script-input" rows="4" placeholder="Escreva aqui o que será narrado nesse intervalo...">${escapeHtml(interval.script || '')}</textarea>
+        </label>
+        <label>Observações internas
+          <textarea class="textarea notes-input" rows="2" placeholder="Ex.: regravar mais curto, validar com a turma, som ambiente importante...">${escapeHtml(interval.notes || '')}</textarea>
+        </label>
+        <div class="save-row">
+          <button class="button primary" data-action="save" title="Salva este intervalo; alterações também ficam em autosave">Salvar intervalo</button>
+          <span class="autosave-state" aria-live="polite">Salvo no histórico local.</span>
+        </div>
+      </details>
+
+      <details class="interval-more">
+        <summary>Ver análise de fala e fundo</summary>
+        ${audioSplitHtml(interval)}
+      </details>
+
+      <details class="interval-more">
+        <summary>Gravar ou revisar narração</summary>
+        <div class="interval-actions">
+          <button class="button record" data-action="record" title="Grava sua narração para este intervalo">● Gravar</button>
+          <button class="button" data-action="delete-recording" title="Remove a gravação salva neste intervalo" ${interval.recording_filename ? '' : 'disabled'}>Remover gravação</button>
+        </div>
+        ${recordingAudio}
+        ${warning}
+      </details>
+    </article>
+  `;
+}
+
+function bindIntervalDetail(interval) {
+  const card = document.getElementById(`interval-${interval.index}`);
+  if (!card) return;
+  card.querySelector('[data-action="play"]')?.addEventListener('click', () => playSegment(interval));
+  card.querySelector('[data-action="jump"]')?.addEventListener('click', () => jumpToStart(interval));
+  card.querySelector('[data-action="position"]')?.addEventListener('click', () => positionAtStart(interval));
+  card.querySelector('[data-action="mark-current"]')?.addEventListener('click', () => goToInterval(interval.index, false));
+  card.querySelector('[data-action="save"]')?.addEventListener('click', () => saveInterval(interval.index, card));
+  card.querySelector('[data-action="record"]')?.addEventListener('click', (ev) => toggleRecording(interval.index, ev.currentTarget));
+  card.querySelector('[data-action="delete-recording"]')?.addEventListener('click', () => deleteRecording(interval.index));
+  card.querySelector('[data-action="delete-interval"]')?.addEventListener('click', () => deleteInterval(interval.index));
+  card.querySelectorAll('.title-input, .status-input, .script-input, .notes-input').forEach(input => {
+    input.addEventListener('input', () => scheduleIntervalSave(interval.index, card));
+    input.addEventListener('change', () => scheduleIntervalSave(interval.index, card, 250));
+  });
+}
+
 function renderIntervals() {
   const project = state.project;
   const intervals = project?.intervals || [];
@@ -1538,7 +1681,7 @@ function renderIntervals() {
   if (!intervals.length) {
     if (els.intervalPager) els.intervalPager.hidden = true;
     els.intervalsContainer.className = 'intervals empty-state';
-    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente” para gerar os cards e a linha do tempo.</p>';
+    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente” ou use “Adicionar intervalo aqui” no vídeo.</p>';
     return;
   }
   if (!filtered.length) {
@@ -1556,76 +1699,36 @@ function renderIntervals() {
   const end = start + pageIntervals.length;
   renderIntervalPager(filtered.length, pageIntervals.length, start + 1, end);
 
-  els.intervalsContainer.className = 'intervals';
-  els.intervalsContainer.innerHTML = '';
-  pageIntervals.forEach(interval => {
-    const card = document.createElement('article');
-    card.className = `interval-card ${state.currentIntervalIndex === interval.index ? 'current' : ''}`;
-    card.id = `interval-${interval.index}`;
-    card.tabIndex = -1;
-    const badgeClass = interval.quality || 'curto';
-    const recordingAudio = interval.recording_filename
-      ? `<audio class="recording-preview" controls src="/media/${project.id}/recordings/${encodeURIComponent(interval.recording_filename)}"></audio>`
-      : '<p class="hint">Nenhuma gravação enviada ainda.</p>';
-    const warning = interval.warning ? `<div class="interval-warning">${escapeHtml(interval.warning)}</div>` : '';
-    const audioSplit = audioSplitHtml(interval);
-    card.innerHTML = `
-      <header>
-        <div>
-          <span class="badge ${badgeClass}">${escapeHtml(interval.quality || '')}</span>
-          <h3>${interval.index}. ${escapeHtml(interval.title || 'Audiodescrição')}</h3>
-          <p class="interval-meta">
-            Espaço útil: <strong>${fmt(interval.start)}</strong> até <strong>${fmt(interval.end)}</strong><br>
-            Duração útil: <strong>${Number(interval.duration || 0).toFixed(2)}s</strong> • Silêncio bruto: ${Number(interval.silence_duration || 0).toFixed(2)}s
-          </p>
-        </div>
-      </header>
-      <div class="interval-actions">
-        <button class="button" data-action="play" title="Toca só este trecho com a margem de contexto configurada">Ver trecho</button>
-        <button class="button" data-action="jump" title="Vai para o início útil da pausa e começa o vídeo">Ir ao início</button>
-        <button class="button" data-action="position" title="Posiciona o vídeo no início da pausa sem tocar">Posicionar e pausar</button>
-        <button class="button" data-action="mark-current" title="Marca este card como o intervalo atual da revisão">Usar como atual</button>
-        <button class="button record" data-action="record" title="Grava sua narração para este intervalo">● Gravar</button>
-        <button class="button" data-action="delete-recording" title="Remove a gravação salva neste intervalo" ${interval.recording_filename ? '' : 'disabled'}>Remover gravação</button>
-      </div>
-      <div class="status-row">
-        <label>Título
-          <input class="input title-input" value="${escapeHtml(interval.title || '')}">
-        </label>
-        <label>Status
-          <select class="input status-input" title="Use o status para controlar o andamento deste intervalo">
-            ${['pendente','roteirizado','gravado','revisado','descartado'].map(s => `<option value="${s}" ${interval.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
-          </select>
-        </label>
-      </div>
-      <label>Roteiro da audiodescrição
-        <textarea class="textarea script-input" rows="4" placeholder="Escreva aqui o que será narrado nesse intervalo...">${escapeHtml(interval.script || '')}</textarea>
-      </label>
-      <label>Observações internas
-        <textarea class="textarea notes-input" rows="2" placeholder="Ex.: regravar mais curto, validar com o Ícaro, som ambiente importante...">${escapeHtml(interval.notes || '')}</textarea>
-      </label>
-      <div class="save-row">
-        <button class="button primary" data-action="save" title="Salva manualmente este card; alterações também ficam em autosave">Salvar intervalo</button>
-        <span class="autosave-state" aria-live="polite">Salvo no histórico local.</span>
-      </div>
-      ${audioSplit}
-      ${recordingAudio}
-      ${warning}
-    `;
+  let selected = pageIntervals.find(item => Number(item.index) === Number(state.selectedIntervalIndex))
+    || pageIntervals.find(item => Number(item.index) === Number(state.currentIntervalIndex))
+    || pageIntervals[0];
+  state.selectedIntervalIndex = selected.index;
+  state.currentIntervalIndex = state.currentIntervalIndex || selected.index;
 
-    card.querySelector('[data-action="play"]').addEventListener('click', () => playSegment(interval));
-    card.querySelector('[data-action="jump"]').addEventListener('click', () => jumpToStart(interval));
-    card.querySelector('[data-action="position"]').addEventListener('click', () => positionAtStart(interval));
-    card.querySelector('[data-action="mark-current"]').addEventListener('click', () => goToInterval(interval.index, false));
-    card.querySelector('[data-action="save"]').addEventListener('click', () => saveInterval(interval.index, card));
-    card.querySelector('[data-action="record"]').addEventListener('click', (ev) => toggleRecording(interval.index, ev.currentTarget));
-    card.querySelector('[data-action="delete-recording"]').addEventListener('click', () => deleteRecording(interval.index));
-    card.querySelectorAll('.title-input, .status-input, .script-input, .notes-input').forEach(input => {
-      input.addEventListener('input', () => scheduleIntervalSave(interval.index, card));
-      input.addEventListener('change', () => scheduleIntervalSave(interval.index, card, 250));
+  els.intervalsContainer.className = 'intervals interval-workbench';
+  els.intervalsContainer.innerHTML = `
+    <div class="interval-list-panel">
+      <div class="interval-list-header">
+        <strong>Fila de revisão</strong>
+        <span>Clique em uma pausa. O vídeo vai para o tempo certo e os detalhes aparecem ao lado.</span>
+      </div>
+      <div class="interval-list" role="listbox" aria-label="Intervalos encontrados">
+        ${pageIntervals.map(intervalRowHtml).join('')}
+      </div>
+    </div>
+    ${intervalDetailHtml(project, selected)}
+  `;
+
+  els.intervalsContainer.querySelectorAll('[data-interval-row]').forEach(row => {
+    row.addEventListener('click', async () => {
+      const index = Number(row.dataset.index);
+      const interval = (state.project?.intervals || []).find(item => Number(item.index) === index);
+      if (!interval) return;
+      goToInterval(index, false);
+      await setVideoTime(interval, false, false, { scrollVideo: false });
     });
-    els.intervalsContainer.appendChild(card);
   });
+  bindIntervalDetail(selected);
 }
 function intervalPayloadFromCard(card) {
   return {
@@ -1670,6 +1773,52 @@ async function saveInterval(index, card, options = {}) {
   } catch (err) {
     setCardSaveState(card, 'Erro ao salvar', 'error');
     showError('Erro ao salvar intervalo', err.message);
+  }
+}
+
+async function addIntervalAtCurrentTime() {
+  if (!state.project) return;
+  const video = els.videoPlayer;
+  const start = Math.max(0, Number(video.currentTime || 0));
+  const projectDuration = Number(state.project.duration || video.duration || 0);
+  const desiredDuration = Math.max(0.8, Number(els.minAdDuration?.value || 0.8));
+  const end = projectDuration ? Math.min(projectDuration, start + desiredDuration) : start + desiredDuration;
+  if (end <= start) {
+    showToast('Não há espaço suficiente nesse ponto do vídeo.');
+    return;
+  }
+  try {
+    const res = await api(`/api/projects/${state.project.id}/intervals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start,
+        end,
+        duration: end - start,
+        title: 'Intervalo manual',
+      }),
+    });
+    setProject(res.project);
+    if (res.interval?.index) {
+      showIntervalPage(res.interval.index, true);
+      goToInterval(res.interval.index, false);
+    }
+    showToast('Intervalo manual adicionado.');
+  } catch (err) {
+    showError('Erro ao adicionar intervalo', err.message);
+  }
+}
+
+async function deleteInterval(index) {
+  if (!state.project) return;
+  const okToDelete = window.confirm(`Excluir a pausa ${index}? A gravação desse intervalo também será removida.`);
+  if (!okToDelete) return;
+  try {
+    const res = await api(`/api/projects/${state.project.id}/intervals/${index}`, { method: 'DELETE' });
+    setProject(res.project);
+    showToast('Intervalo excluído.');
+  } catch (err) {
+    showError('Erro ao excluir intervalo', err.message);
   }
 }
 
@@ -1966,6 +2115,8 @@ function bindEvents() {
     const interval = findIntervalNearVideo(1);
     if (interval) goToInterval(interval.index, true);
   });
+  els.addIntervalAtCurrentBtn?.addEventListener('click', addIntervalAtCurrentTime);
+  els.addIntervalListBtn?.addEventListener('click', addIntervalAtCurrentTime);
   els.markReviewedBtn.addEventListener('click', markCurrentReviewed);
   els.exportButtons.forEach(btn => btn.addEventListener('click', () => exportFile(btn.dataset.export)));
   els.searchIntervals.addEventListener('input', () => { state.intervalPage = 1; renderIntervals(); });

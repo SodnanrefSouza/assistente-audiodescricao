@@ -14,6 +14,7 @@ os.environ.setdefault("AD_ASSIST_DATA_DIR", str(Path(tempfile.gettempdir()) / "a
 
 from app.main import create_app  # noqa: E402
 from app.core.ffmpeg_utils import _classify_audio_background, _parse_rms_samples  # noqa: E402
+from app.core.interval_tools import parse_timed_transcript_segments, speech_gap_intervals  # noqa: E402
 
 
 class SmokeTest(unittest.TestCase):
@@ -32,9 +33,11 @@ class SmokeTest(unittest.TestCase):
             "timelineTrack",
             "audioInsightPanel",
             "playbackSpeed",
+            "addIntervalAtCurrentBtn",
+            "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260526-audio-background",
+            "20260601-clean-intervals",
         ):
             self.assertIn(expected, html)
 
@@ -44,7 +47,12 @@ class SmokeTest(unittest.TestCase):
         for expected in (
             "playbackSpeed: $('playbackSpeed')",
             "intervalPager: $('intervalPager')",
+            "addIntervalAtCurrentBtn: $('addIntervalAtCurrentBtn')",
+            "addIntervalListBtn: $('addIntervalListBtn')",
             "function renderIntervalPager",
+            "function addIntervalAtCurrentTime",
+            "function deleteInterval",
+            "function intervalRowHtml",
             "function timelineGroups",
             "playbackRate",
             "intervalPageSize",
@@ -54,6 +62,10 @@ class SmokeTest(unittest.TestCase):
             self.assertIn(expected, js)
         for expected in (
             ".interval-pager",
+            ".interval-workbench",
+            ".interval-row",
+            ".interval-detail-card",
+            ".compact-panel",
             ".speed-control",
             "body[data-large-text=\"true\"]",
             "body[data-contrast=\"high\"]",
@@ -76,6 +88,18 @@ class SmokeTest(unittest.TestCase):
             "lavfi.astats.Overall.RMS_level=-inf\n"
         )
         self.assertEqual(samples, [(1.5, -42.3), (2.0, -120.0)])
+
+    def test_transcript_gap_detection(self) -> None:
+        srt = (
+            "1\n00:00:00,000 --> 00:00:02,000\nfala inicial\n\n"
+            "2\n00:00:06,000 --> 00:00:08,000\nfala final\n"
+        )
+        segments = parse_timed_transcript_segments(srt)
+        self.assertEqual(len(segments), 2)
+        gaps = speech_gap_intervals(srt, 10, min_gap=1.0, padding_start=0.1, padding_end=0.1)
+        self.assertTrue(any(2.0 < gap["start"] < 3.0 and 5.0 < gap["end"] < 6.0 for gap in gaps))
+        self.assertTrue(all(gap["detection_source"] == "fala/transcricao" for gap in gaps))
+
     def test_health_endpoint(self) -> None:
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
