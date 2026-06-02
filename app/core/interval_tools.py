@@ -179,6 +179,7 @@ def _segment_overlaps_interval(
     interval: dict[str, Any],
     *,
     margin: float = SPEECH_SAFETY_MARGIN_SECONDS,
+    include_boundary: bool = True,
 ) -> bool:
     start = max(0.0, _as_float(interval.get("start")) - margin)
     end = max(start, _as_float(interval.get("end")) + margin)
@@ -187,6 +188,8 @@ def _segment_overlaps_interval(
     overlap = max(0.0, min(end, seg_end) - max(start, seg_start))
     if overlap >= 0.05:
         return True
+    if not include_boundary:
+        return False
     boundary_margin = max(margin, 0.35)
     return (
         start - boundary_margin <= seg_start <= end + boundary_margin
@@ -207,7 +210,16 @@ def mark_transcript_overlaps(
 
     for interval in normalized:
         interval_margin = 0.05 if interval.get("speech_gap_confirmed") else margin
-        matches = [segment for segment in segments if _segment_overlaps_interval(segment, interval, margin=interval_margin)]
+        matches = [
+            segment
+            for segment in segments
+            if _segment_overlaps_interval(
+                segment,
+                interval,
+                margin=interval_margin,
+                include_boundary=not bool(interval.get("speech_gap_confirmed")),
+            )
+        ]
         interval["speech_checked"] = True
         interval["speech_overlap"] = bool(matches)
         interval["speech_overlap_segments"] = [

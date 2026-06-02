@@ -234,6 +234,16 @@ class SmokeTest(unittest.TestCase):
         self.assertTrue(any(2.0 < gap["start"] < 3.0 and 5.0 < gap["end"] < 6.0 for gap in gaps))
         self.assertTrue(all(gap["detection_source"] == "fala/transcricao" for gap in gaps))
 
+    def test_confirmed_speech_gap_ignores_boundary_speech(self) -> None:
+        srt = (
+            "1\n00:00:00,000 --> 00:00:02,000\nfala inicial\n\n"
+            "2\n00:00:06,000 --> 00:00:08,000\nfala final\n"
+        )
+        intervals = speech_gap_intervals(srt, 10, min_gap=1.0, padding_start=0.25, padding_end=0.25)
+        checked = mark_transcript_overlaps(intervals, srt)
+        self.assertEqual(len(checked), 2)
+        self.assertFalse(checked[0]["speech_overlap"])
+
     def test_short_transcript_speech_marks_interval_for_review(self) -> None:
         srt = "1\n00:00:05,100 --> 00:00:05,350\nobrigado\n"
         intervals = [

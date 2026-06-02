@@ -43,6 +43,8 @@ from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, saf
 from .core.timecode import parse_float
 from .core.transcription import result_to_metadata, transcribe_video
 
+SPEECH_ANALYSIS_VERSION = "20260602-speech-boundary-v2"
+
 
 def resource_root() -> Path:
     if getattr(sys, "frozen", False):
@@ -229,6 +231,7 @@ def create_app() -> Flask:
                         settings,
                     )
                     fresh_project["analysis_strategy"] = "fala/transcricao"
+                    fresh_project["analysis_version"] = SPEECH_ANALYSIS_VERSION
                 store.save(fresh_project, reason="Checagem de voz gerada")
                 jobs.update(
                     job_id,
@@ -565,6 +568,7 @@ def create_app() -> Flask:
             settings = _parse_detection_settings(project, {})
             project["intervals"] = _with_transcript_gap_candidates(project, project.get("intervals", []), settings)
             project["analysis_strategy"] = "fala/transcricao"
+            project["analysis_version"] = SPEECH_ANALYSIS_VERSION
         store.save(project, reason="Checagem de voz atualizada")
         return ok({"project": project})
 
@@ -737,13 +741,18 @@ def create_app() -> Flask:
                 store.save(project, reason="Intervalos automaticos por som ocultados sem transcricao")
             return project
         settings = _parse_detection_settings(project, {})
-        if _has_transcript_text(project) and project.get("analysis_strategy") == "fala/transcricao":
+        if (
+            _has_transcript_text(project)
+            and project.get("analysis_strategy") == "fala/transcricao"
+            and project.get("analysis_version") == SPEECH_ANALYSIS_VERSION
+        ):
             return project
         refreshed = _with_transcript_gap_candidates(project, intervals, settings)
-        if refreshed != intervals:
+        if refreshed != intervals or project.get("analysis_version") != SPEECH_ANALYSIS_VERSION:
             project["settings"] = settings
             project["intervals"] = refreshed
             project["analysis_strategy"] = "fala/transcricao"
+            project["analysis_version"] = SPEECH_ANALYSIS_VERSION
             store.save(project, reason="Análise de pausas atualizada ao abrir")
         return project
 
@@ -776,6 +785,7 @@ def create_app() -> Flask:
             fresh_project["settings"] = settings
             fresh_project["intervals"] = intervals
             fresh_project["analysis_strategy"] = "fala/transcricao"
+            fresh_project["analysis_version"] = SPEECH_ANALYSIS_VERSION
             store.save(fresh_project, reason="Detecção automática de pausas")
             jobs.update(
                 job_id,
@@ -806,6 +816,7 @@ def create_app() -> Flask:
         project["settings"] = settings
         project["intervals"] = intervals
         project["analysis_strategy"] = "fala/transcricao"
+        project["analysis_version"] = SPEECH_ANALYSIS_VERSION
         store.save(project, reason="Detecção automática de pausas")
         return ok({"project": project, "message": f"{len(intervals)} intervalos encontrados."})
 
