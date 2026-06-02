@@ -3,6 +3,9 @@ setlocal
 
 cd /d "%~dp0"
 
+set "AD_ASSIST_DATA_DIR=%~dp0data"
+if not defined AD_ASSIST_PORT set "AD_ASSIST_PORT=8765"
+
 if not exist ".venv\Scripts\python.exe" (
   echo Ambiente Python local nao encontrado.
   echo Execute scripts\setup_windows.ps1 antes de abrir o assistente.
