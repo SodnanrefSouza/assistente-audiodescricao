@@ -200,7 +200,7 @@ function applyTooltips(root = document) {
     ['#previewMargin', 'Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.'],
     ['#paddingStart', 'Corta um pedacinho do começo da pausa para evitar pegar final de fala.'],
     ['#paddingEnd', 'Corta um pedacinho do final da pausa para evitar pegar início de fala.'],
-    ['#detectBtn', 'Primeiro checa as falas do vídeo e monta pausas entre elas. O som baixo só classifica o fundo depois disso.'],
+    ['#detectBtn', 'Primeiro checa as falas do vídeo e monta pausas entre elas. A leitura do fundo só avisa se vale ouvir antes.'],
     ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
     ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
     ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
@@ -916,7 +916,7 @@ function backgroundInfoForInterval(interval) {
   };
   const details = {
     quiet: 'A medição de áudio encontrou volume muito baixo nesta pausa.',
-    low_background: 'Existe som baixo. Pode ser música, trilha, ambiente ou ruído, então vale ouvir antes.',
+    low_background: 'Existe fundo audível baixo. Pode ser música, trilha, ambiente ou ruído, então vale ouvir antes.',
     active_background: 'O fundo está audível. Pode ser música, trilha, ambiente ou fala fraca; revise com cuidado.',
     unknown: 'Esta pausa ainda não tem medição de fundo. Rode a detecção novamente para classificar melhor.',
   };
@@ -995,7 +995,7 @@ function audioSplitHtml(interval) {
     ? 'Existe fala perto desta pausa. Confira antes de gravar para não narrar por cima de alguém.'
     : info.transcriptReady
       ? 'Não encontrei fala relevante nesta pausa. Agora confira o fundo: silêncio limpo é melhor; fundo audível pede revisão.'
-      : 'Ainda não há checagem de fala para este projeto. Use como pausa de som baixo e revise no vídeo.';
+      : 'Ainda não há checagem de fala para este projeto. Aguarde a transcrição antes de usar como pausa automática.';
   return `
     <div class="audio-split ${info.recommendationState}">
       <div class="audio-split-row">
@@ -1280,7 +1280,7 @@ function renderTimeline() {
   const strategyText = project.analysis_strategy === 'fala/transcricao'
     ? 'pausas entre falas'
     : project.analysis_strategy === 'audio/provisorio'
-      ? 'pausas provisórias por som baixo'
+      ? 'resultado antigo por som, aguardando transcrição'
       : 'pausas aguardando checagem de fala';
   els.timelineStatus.textContent = `${intervals.length} pausa(s) em ${fmtClock(duration)} (${strategyText}). Clique numa região para ver as pausas daquela parte.`;
   els.timelineTrack.className = 'timeline-track editor';
@@ -1606,7 +1606,7 @@ async function detectSilences() {
     padding_start: Number(els.paddingStart.value),
     padding_end: Number(els.paddingEnd.value),
   };
-  setLoading(true, 'Detectando pausas entre falas...', 'Primeiro o sistema checa a fala do vídeo. O som baixo só classifica o fundo depois que as pausas existem.', 1);
+  setLoading(true, 'Detectando pausas entre falas...', 'Primeiro o sistema checa a fala do vídeo. A leitura do fundo só entra depois, como aviso.', 1);
   try {
     const start = await api(`/api/projects/${state.project.id}/detect/start`, {
       method: 'POST',
@@ -1705,9 +1705,10 @@ function renderIntervalPager(total, pageItemsCount, startNumber, endNumber) {
 function intervalSourceLabel(interval) {
   const source = String(interval.detection_source || '').toLowerCase();
   if (source.includes('manual')) return 'adicionado manualmente';
-  if (source.includes('fala') && source.includes('som')) return 'som baixo + espaço entre falas';
+  if (source.includes('fala') && source.includes('som')) return 'espaço entre falas + fundo medido';
   if (source.includes('fala')) return 'espaço entre falas';
-  return 'som baixo';
+  if (source.includes('manual')) return 'manual';
+  return 'origem antiga sem transcrição';
 }
 
 function intervalRecommendationText(info) {

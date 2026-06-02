@@ -237,6 +237,11 @@ def _should_preserve_existing_interval(interval: dict[str, Any]) -> bool:
     )
 
 
+def preserved_user_intervals(intervals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mantem apenas intervalos que parecem ter edicao humana."""
+    return normalize_intervals([dict(interval) for interval in intervals if _should_preserve_existing_interval(interval)])
+
+
 def _interval_overlap_ratio(left: dict[str, Any], right: dict[str, Any]) -> float:
     left_start = _as_float(left.get("start"))
     left_end = _as_float(left.get("end"), left_start)

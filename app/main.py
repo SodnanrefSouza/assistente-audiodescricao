@@ -36,6 +36,7 @@ from .core.ffmpeg_utils import (
 from .core.interval_tools import (
     create_manual_interval,
     normalize_intervals,
+    preserved_user_intervals,
     speech_first_intervals,
 )
 from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, safe_filename
@@ -333,7 +334,18 @@ def create_app() -> Flask:
 
     @app.get("/api/projects")
     def list_projects():
-        return ok({"projects": store.list_projects()})
+        projects = []
+        for summary in store.list_projects():
+            project_id = summary.get("id")
+            try:
+                if project_id:
+                    project = _project_with_current_analysis(store.load(project_id))
+                    summary["interval_count"] = len(project.get("intervals", []))
+                    summary["updated_at"] = project.get("updated_at", summary.get("updated_at"))
+            except Exception:
+                pass
+            projects.append(summary)
+        return ok({"projects": projects})
 
     def _upload_session_path(upload_id: str) -> Path:
         return upload_sessions_dir / f"{secure_filename(upload_id)}.json"
@@ -700,6 +712,14 @@ def create_app() -> Flask:
         if not intervals:
             return project
         if not _has_transcript_text(project):
+            preserved = preserved_user_intervals(intervals)
+            if preserved != normalize_intervals(intervals):
+                project["intervals"] = preserved
+                project["analysis_strategy"] = "aguardando_transcricao"
+                workflow = project.get("workflow") or {}
+                workflow["current_interval"] = preserved[0]["index"] if preserved else None
+                project["workflow"] = workflow
+                store.save(project, reason="Intervalos automaticos por som ocultados sem transcricao")
             return project
         settings = _parse_detection_settings(project, {})
         if _has_transcript_text(project) and project.get("analysis_strategy") == "fala/transcricao":

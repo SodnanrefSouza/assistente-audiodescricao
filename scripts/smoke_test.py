@@ -132,8 +132,46 @@ class SmokeTest(unittest.TestCase):
         response = self.client.get(f"/api/projects/{project['id']}")
         self.assertEqual(response.status_code, 200)
         refreshed = response.get_json()["project"]
-        self.assertEqual(len(refreshed["intervals"]), 2)
-        self.assertNotEqual(refreshed.get("analysis_strategy"), "audio/provisorio")
+        self.assertEqual(refreshed["intervals"], [])
+        self.assertEqual(refreshed.get("analysis_strategy"), "aguardando_transcricao")
+
+    def test_open_project_preserves_user_interval_without_transcript(self) -> None:
+        store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
+        project = store.create_project("video_teste.mp4", title="Teste preserva")
+        project["duration"] = 20
+        project["intervals"] = [
+            {"start": 1.0, "end": 2.0, "silence_start": 1.0, "silence_end": 2.0, "detection_source": "som baixo"},
+            {
+                "start": 5.0,
+                "end": 7.0,
+                "silence_start": 5.0,
+                "silence_end": 7.0,
+                "detection_source": "manual",
+                "script": "Cena da rua.",
+            },
+        ]
+        store.save(project, reason="Fixture com intervalo manual")
+
+        response = self.client.get(f"/api/projects/{project['id']}")
+        self.assertEqual(response.status_code, 200)
+        refreshed = response.get_json()["project"]
+        self.assertEqual(len(refreshed["intervals"]), 1)
+        self.assertEqual(refreshed["intervals"][0]["detection_source"], "manual")
+
+    def test_project_list_hides_old_audio_interval_count_without_transcript(self) -> None:
+        store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
+        project = store.create_project("video_teste.mp4", title="Teste lista antiga")
+        project["duration"] = 20
+        project["intervals"] = [
+            {"start": 1.0, "end": 2.0, "silence_start": 1.0, "silence_end": 2.0, "detection_source": "som baixo"},
+        ]
+        store.save(project, reason="Fixture lista")
+
+        response = self.client.get("/api/projects")
+        self.assertEqual(response.status_code, 200)
+        projects = response.get_json()["projects"]
+        current = next(item for item in projects if item["id"] == project["id"])
+        self.assertEqual(current["interval_count"], 0)
 
     def test_detect_route_requires_transcript_before_intervals(self) -> None:
         store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
