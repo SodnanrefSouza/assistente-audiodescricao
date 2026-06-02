@@ -35,7 +35,9 @@ from .core.ffmpeg_utils import (
     recording_duration,
 )
 from .core.interval_tools import (
+    coalesce_auto_intervals,
     create_manual_interval,
+    mark_transcript_overlaps,
     merge_interval_candidates,
     normalize_intervals,
     speech_gap_intervals,
@@ -522,7 +524,7 @@ def create_app() -> Flask:
     def get_project(project_id: str):
         if not store.exists(project_id):
             raise NotFound("Projeto não encontrado.")
-        return ok({"project": store.load(project_id)})
+        return ok({"project": _project_with_current_analysis(store.load(project_id))})
 
     @app.delete("/api/projects/<project_id>")
     def delete_project(project_id: str):
@@ -578,11 +580,11 @@ def create_app() -> Flask:
 
         settings = project.get("settings", {})
         return {
-            "noise_db": clamp(parse_float(data.get("noise_db"), settings.get("noise_db", -35)), -80, 0),
-            "min_silence": clamp(parse_float(data.get("min_silence"), settings.get("min_silence", 1.0)), 0.2, 10),
-            "min_ad_duration": clamp(parse_float(data.get("min_ad_duration"), settings.get("min_ad_duration", 0.8)), 0.2, 30),
-            "padding_start": clamp(parse_float(data.get("padding_start"), settings.get("padding_start", 0.1)), 0, 5),
-            "padding_end": clamp(parse_float(data.get("padding_end"), settings.get("padding_end", 0.1)), 0, 5),
+            "noise_db": clamp(parse_float(data.get("noise_db"), settings.get("noise_db", -38)), -80, 0),
+            "min_silence": clamp(parse_float(data.get("min_silence"), settings.get("min_silence", 1.2)), 0.2, 10),
+            "min_ad_duration": clamp(parse_float(data.get("min_ad_duration"), settings.get("min_ad_duration", 1.2)), 0.2, 30),
+            "padding_start": clamp(parse_float(data.get("padding_start"), settings.get("padding_start", 0.25)), 0, 5),
+            "padding_end": clamp(parse_float(data.get("padding_end"), settings.get("padding_end", 0.25)), 0, 5),
             "preview_margin": clamp(parse_float(data.get("preview_margin"), settings.get("preview_margin", 2.0)), 0, 30),
         }
 
@@ -601,9 +603,22 @@ def create_app() -> Flask:
             padding_start=settings["padding_start"],
             padding_end=settings["padding_end"],
         )
+        base = coalesce_auto_intervals(intervals)
         if not speech_intervals:
-            return normalize_intervals(intervals)
-        return merge_interval_candidates(intervals, speech_intervals)
+            return mark_transcript_overlaps(base, transcript_text)
+        return mark_transcript_overlaps(merge_interval_candidates(base, speech_intervals), transcript_text)
+
+    def _project_with_current_analysis(project: dict[str, Any]) -> dict[str, Any]:
+        intervals = project.get("intervals") or []
+        if not intervals:
+            return project
+        settings = _parse_detection_settings(project, {})
+        refreshed = _with_transcript_gap_candidates(project, intervals, settings)
+        if refreshed != intervals:
+            project["settings"] = settings
+            project["intervals"] = refreshed
+            store.save(project, reason="Análise de pausas atualizada ao abrir")
+        return project
 
     @app.post("/api/projects/<project_id>/detect/start")
     def detect_start_route(project_id: str):

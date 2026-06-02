@@ -184,17 +184,17 @@
           <div class="form-grid">
             <label>
               Sensibilidade do som baixo (dB)
-              <input id="noiseDb" class="input" type="number" step="1" value="-35" title="dB é uma medida de volume. Em áudio digital, números negativos mais perto de zero aceitam mais som; números mais negativos exigem quase silêncio.">
-              <small>dB é volume. -35 é um bom começo. -20 aceita mais barulho; -50 só marca trechos quase silenciosos.</small>
+              <input id="noiseDb" class="input" type="number" step="1" value="-38" title="dB é uma medida de volume. Números mais negativos exigem um fundo mais baixo antes de criar uma pausa.">
+              <small>dB é volume. -38 é mais seguro para começar. -25 aceita mais barulho; -50 só marca trechos quase silenciosos.</small>
             </label>
             <label>
               Duração mínima do trecho baixo (s)
-              <input id="minSilence" class="input" type="number" step="0.1" value="1.0" title="Quanto tempo o som precisa ficar baixo para virar uma pausa candidata. Aumente para ignorar pausas muito curtas.">
-              <small>Ex.: 1s quer dizer que o som precisa ficar baixo por pelo menos um segundo.</small>
+              <input id="minSilence" class="input" type="number" step="0.1" value="1.2" title="Quanto tempo o som precisa ficar baixo para virar uma pausa candidata. Aumente para ignorar pausas muito curtas.">
+              <small>Ex.: 1,2s quer dizer que o som precisa ficar baixo por pelo menos 1,2 segundo.</small>
             </label>
             <label>
               Tempo mínimo para narrar (s)
-              <input id="minAdDuration" class="input" type="number" step="0.1" value="0.8" title="Menor duração aceitável para inserir uma audiodescrição. Aumente se as pausas estiverem curtas demais para falar.">
+              <input id="minAdDuration" class="input" type="number" step="0.1" value="1.2" title="Menor duração aceitável para inserir uma audiodescrição. Aumente se as pausas estiverem curtas demais para falar.">
               <small>Menor espaço que deve sobrar para gravar uma frase curta.</small>
             </label>
             <label>
@@ -209,11 +209,11 @@
             <div class="form-grid compact">
               <label>
                 Cortar início do silêncio (s)
-                <input id="paddingStart" class="input" type="number" step="0.05" value="0.10">
+                <input id="paddingStart" class="input" type="number" step="0.05" value="0.25">
               </label>
               <label>
                 Cortar fim do silêncio (s)
-                <input id="paddingEnd" class="input" type="number" step="0.05" value="0.10">
+                <input id="paddingEnd" class="input" type="number" step="0.05" value="0.25">
               </label>
             </div>
           </details>

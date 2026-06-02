@@ -427,13 +427,50 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   border: 1px solid #d8e0eb;
   border-radius: 6px;
   background: #eef2f7;
-  overflow-x: hidden;
-  overflow-y: visible;
+  overflow: hidden;
+}
+.timeline-detail-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.timeline-detail-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(71, 85, 105, 0.16);
+}
+.timeline-detail-tick.major {
+  background: rgba(71, 85, 105, 0.32);
+}
+.timeline-detail-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: var(--primary);
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+}
+.timeline-detail-playhead::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateX(-50%);
 }
 .timeline-detail-marker {
   position: absolute;
   top: calc(8px + (var(--lane, 0) * 36px));
-  min-width: 28px;
+  min-width: 0;
   height: 28px;
   border: 1px solid rgba(255,255,255,0.95);
   border-radius: 8px;
@@ -448,6 +485,7 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   justify-content: center;
   overflow: hidden;
   padding: 0 4px;
+  z-index: 2;
 }
 .timeline-detail-marker.speech { background: #ffc9c9; color: #7a1f1f; }
 .timeline-detail-marker.clear { background: #9be7bf; color: #17452d; }
@@ -752,8 +790,8 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .interval-list {
   display: grid;
   gap: 8px;
-  max-height: min(64vh, 680px);
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   padding: 10px;
 }
 .interval-row {
@@ -1116,7 +1154,6 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .filters .button { width: 100%; }
   .export-actions { justify-content: flex-start; }
   .interval-workbench { grid-template-columns: 1fr; }
-  .interval-list { max-height: 420px; }
   .interval-detail-card {
     position: static;
     max-height: none;

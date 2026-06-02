@@ -4,6 +4,8 @@ import re
 from typing import Any
 
 VALID_STATUSES = {"pendente", "roteirizado", "gravado", "revisado", "descartado"}
+AUTO_MERGE_GAP_SECONDS = 0.75
+SPEECH_SAFETY_MARGIN_SECONDS = 0.25
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -50,6 +52,176 @@ def normalize_intervals(intervals: list[dict[str, Any]]) -> list[dict[str, Any]]
         interval["index"] = index
         if not interval.get("title") or interval["title"] == "Audiodescricao":
             interval["title"] = f"Audiodescricao {index}"
+    return normalized
+
+
+def _is_auto_unedited_interval(interval: dict[str, Any]) -> bool:
+    source = str(interval.get("detection_source") or "").lower()
+    return (
+        "manual" not in source
+        and not str(interval.get("script") or "").strip()
+        and not str(interval.get("notes") or "").strip()
+        and not interval.get("recording_filename")
+        and (interval.get("status") in (None, "", "pendente"))
+    )
+
+
+def _merge_sources(left: Any, right: Any) -> str:
+    parts: list[str] = []
+    for value in (left, right):
+        for piece in str(value or "").split("+"):
+            piece = piece.strip()
+            if piece and piece not in parts:
+                parts.append(piece)
+    return " + ".join(parts) or "som baixo"
+
+
+def _combine_background_state(left: dict[str, Any], right: dict[str, Any]) -> str:
+    priority = {
+        "quiet": 0,
+        "unknown": 1,
+        "low_background": 2,
+        "active_background": 3,
+    }
+    left_state = str(left.get("background_state") or "unknown")
+    right_state = str(right.get("background_state") or "unknown")
+    return left_state if priority.get(left_state, 1) >= priority.get(right_state, 1) else right_state
+
+
+def _background_label_for_state(state_name: str) -> tuple[str, str]:
+    if state_name == "quiet":
+        return (
+            "silencio quase puro",
+            "Os trechos unidos ficaram com volume muito baixo.",
+        )
+    if state_name == "low_background":
+        return (
+            "fundo baixo possivel",
+            "Ha fundo baixo no trecho unido. Ouça antes de gravar.",
+        )
+    if state_name == "active_background":
+        return (
+            "fundo audivel: ouca antes",
+            "Ha fundo audivel em parte do trecho unido. Revise com cuidado.",
+        )
+    return (
+        "fundo nao medido",
+        "O trecho unido ainda precisa de nova medicao de fundo.",
+    )
+
+
+def _merge_auto_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(left)
+    start = min(_as_float(left.get("start")), _as_float(right.get("start")))
+    end = max(_as_float(left.get("end")), _as_float(right.get("end")))
+    silence_start = min(_as_float(left.get("silence_start"), start), _as_float(right.get("silence_start"), start))
+    silence_end = max(_as_float(left.get("silence_end"), end), _as_float(right.get("silence_end"), end))
+    background_state = _combine_background_state(left, right)
+    background_label, background_detail = _background_label_for_state(background_state)
+    speech_segments = []
+    for item in (left, right):
+        for segment in item.get("speech_overlap_segments") or []:
+            if segment not in speech_segments:
+                speech_segments.append(segment)
+    warnings = [str(item.get("warning") or "").strip() for item in (left, right)]
+    merged.update(
+        {
+            "start": start,
+            "end": end,
+            "duration": end - start,
+            "silence_start": silence_start,
+            "silence_end": silence_end,
+            "silence_duration": silence_end - silence_start,
+            "quality": interval_quality(end - start),
+            "title": "Audiodescricao",
+            "detection_source": _merge_sources(left.get("detection_source"), right.get("detection_source")),
+            "speech_gap_confirmed": bool(left.get("speech_gap_confirmed") or right.get("speech_gap_confirmed")),
+            "speech_overlap": bool(left.get("speech_overlap") or right.get("speech_overlap")),
+            "speech_overlap_segments": speech_segments[:5],
+            "speech_checked": bool(left.get("speech_checked") or right.get("speech_checked")),
+            "background_state": background_state,
+            "background_label": background_label,
+            "background_detail": background_detail,
+            "background_rms_db": min(
+                _as_float(left.get("background_rms_db"), 0),
+                _as_float(right.get("background_rms_db"), 0),
+            )
+            if left.get("background_rms_db") is not None and right.get("background_rms_db") is not None
+            else left.get("background_rms_db") if left.get("background_rms_db") is not None else right.get("background_rms_db"),
+            "warning": " ".join(w for w in warnings if w),
+        }
+    )
+    return merged
+
+
+def coalesce_auto_intervals(
+    intervals: list[dict[str, Any]],
+    *,
+    max_gap: float = AUTO_MERGE_GAP_SECONDS,
+) -> list[dict[str, Any]]:
+    ordered = sorted((dict(item) for item in intervals), key=lambda item: (_as_float(item.get("start")), _as_float(item.get("end"))))
+    merged: list[dict[str, Any]] = []
+    for interval in ordered:
+        if (
+            merged
+            and _is_auto_unedited_interval(merged[-1])
+            and _is_auto_unedited_interval(interval)
+            and _as_float(interval.get("start")) <= _as_float(merged[-1].get("end")) + max_gap
+        ):
+            merged[-1] = _merge_auto_pair(merged[-1], interval)
+            continue
+        merged.append(interval)
+    return normalize_intervals(merged)
+
+
+def _segment_overlaps_interval(
+    segment: dict[str, Any],
+    interval: dict[str, Any],
+    *,
+    margin: float = SPEECH_SAFETY_MARGIN_SECONDS,
+) -> bool:
+    start = max(0.0, _as_float(interval.get("start")) - margin)
+    end = max(start, _as_float(interval.get("end")) + margin)
+    seg_start = max(0.0, _as_float(segment.get("start")))
+    seg_end = max(seg_start, _as_float(segment.get("end"), seg_start + 0.3))
+    overlap = max(0.0, min(end, seg_end) - max(start, seg_start))
+    if overlap >= 0.05:
+        return True
+    boundary_margin = max(margin, 0.35)
+    return (
+        start - boundary_margin <= seg_start <= end + boundary_margin
+        or start - boundary_margin <= seg_end <= end + boundary_margin
+    )
+
+
+def mark_transcript_overlaps(
+    intervals: list[dict[str, Any]],
+    transcript_text: str,
+    *,
+    margin: float = SPEECH_SAFETY_MARGIN_SECONDS,
+) -> list[dict[str, Any]]:
+    normalized = normalize_intervals(intervals)
+    segments = parse_timed_transcript_segments(transcript_text)
+    if not segments:
+        return normalized
+
+    for interval in normalized:
+        matches = [segment for segment in segments if _segment_overlaps_interval(segment, interval, margin=margin)]
+        interval["speech_checked"] = True
+        interval["speech_overlap"] = bool(matches)
+        interval["speech_overlap_segments"] = [
+            {
+                "start": round(_as_float(segment.get("start")), 3),
+                "end": round(_as_float(segment.get("end")), 3),
+                "text": str(segment.get("text") or "").strip(),
+            }
+            for segment in matches[:5]
+        ]
+        interval["speech_overlap_detail"] = (
+            "A transcricao encontrou fala dentro ou perto desta pausa."
+            if matches
+            else "A transcricao nao encontrou fala relevante nesta pausa."
+        )
     return normalized
 
 
@@ -213,7 +385,7 @@ def merge_interval_candidates(
         source = str(best.get("detection_source") or "som baixo")
         if "fala" not in source:
             best["detection_source"] = f"{source} + fala/transcricao"
-    return normalize_intervals(merged)
+    return coalesce_auto_intervals(merged)
 
 
 def _find_related_interval(

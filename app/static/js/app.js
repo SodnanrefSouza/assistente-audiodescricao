@@ -194,9 +194,9 @@ function applyTooltips(root = document) {
     ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
     ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para abrir as pausas daquela parte e depois escolha uma barra.'],
     ['#audioInsightPanel', 'Checklist com as pausas mais seguras e as pausas que precisam ser ouvidas antes da gravação.'],
-    ['#noiseDb', 'Sensibilidade do volume baixo. -35 costuma funcionar bem. -20 aceita mais barulho; -50 exige quase silêncio.'],
-    ['#minSilence', 'Tempo mínimo que o som precisa ficar baixo para virar uma pausa candidata.'],
-    ['#minAdDuration', 'Menor tempo útil para caber uma narração curta de audiodescrição.'],
+    ['#noiseDb', 'Sensibilidade do volume baixo. -38 é mais seguro para começar. -25 aceita mais barulho; -50 exige quase silêncio.'],
+    ['#minSilence', 'Tempo mínimo que o som precisa ficar baixo para virar uma pausa candidata. Use valores maiores para evitar pausas picadas.'],
+    ['#minAdDuration', 'Menor tempo útil para caber uma narração curta de audiodescrição. Use valores maiores para evitar trechos apertados.'],
     ['#previewMargin', 'Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.'],
     ['#paddingStart', 'Corta um pedacinho do começo da pausa para evitar pegar final de fala.'],
     ['#paddingEnd', 'Corta um pedacinho do final da pausa para evitar pegar início de fala.'],
@@ -692,12 +692,12 @@ function setProject(project) {
   els.refreshHistoryBtn.disabled = false;
   els.transcriptText.value = project.transcript?.text || '';
   const s = project.settings || {};
-  els.noiseDb.value = s.noise_db ?? -35;
-  els.minSilence.value = s.min_silence ?? 1.0;
-  els.minAdDuration.value = s.min_ad_duration ?? 0.8;
+  els.noiseDb.value = s.noise_db ?? -38;
+  els.minSilence.value = s.min_silence ?? 1.2;
+  els.minAdDuration.value = s.min_ad_duration ?? 1.2;
   els.previewMargin.value = s.preview_margin ?? 2.0;
-  els.paddingStart.value = s.padding_start ?? 0.10;
-  els.paddingEnd.value = s.padding_end ?? 0.10;
+  els.paddingStart.value = s.padding_start ?? 0.25;
+  els.paddingEnd.value = s.padding_end ?? 0.25;
   els.exportButtons.forEach(btn => btn.disabled = false);
   updateWorkflowPanel();
   updateTranscriptStatus();
@@ -871,35 +871,39 @@ function transcriptOverlapInfo(interval, segment) {
   const rawStart = Number(interval.start || 0);
   const rawEnd = Number(interval.end || rawStart);
   const rawDuration = Math.max(0.01, rawEnd - rawStart);
-  const trim = Math.min(0.35, rawDuration * 0.25);
-  const start = rawStart + trim;
-  const end = Math.max(start + 0.01, rawEnd - trim);
-  const bodyDuration = Math.max(0.01, end - start);
+  const safetyMargin = Math.min(0.8, Math.max(0.25, rawDuration * 0.18));
+  const start = Math.max(0, rawStart - safetyMargin);
+  const end = Math.max(start + 0.01, rawEnd + safetyMargin);
+  const bodyDuration = Math.max(0.01, rawEnd - rawStart);
   const segStart = Number(segment.start || 0);
-  const segEnd = Number(segment.end || segStart + 3);
+  const segEnd = Number(segment.end || segStart + 0.3);
   const segDuration = Math.max(0.01, segEnd - segStart);
   const overlapStart = Math.max(start, segStart);
   const overlapEnd = Math.min(end, segEnd);
   const overlap = Math.max(0, overlapEnd - overlapStart);
   const overlapRatio = overlap / bodyDuration;
-  const boundaryPadding = Math.min(0.5, rawDuration * 0.25);
+  const boundaryPadding = Math.max(0.35, safetyMargin);
   const boundaryInside = (segStart >= rawStart - boundaryPadding && segStart <= rawEnd + boundaryPadding)
     || (segEnd >= rawStart - boundaryPadding && segEnd <= rawEnd + boundaryPadding);
-  const coarseTranscriptBlock = segDuration > Math.max(6, bodyDuration * 2.5);
-  const meaningfulOverlap = overlap >= Math.max(0.45, Math.min(1.2, bodyDuration * 0.45));
+  const text = String(segment.text || '').trim();
+  const meaningfulOverlap = overlap >= 0.05;
 
   return {
     overlap,
     overlapRatio,
     boundaryInside,
-    coarseTranscriptBlock,
-    meaningful: overlap > 0 && (boundaryInside || (!coarseTranscriptBlock && meaningfulOverlap)),
+    meaningful: Boolean(text) && (meaningfulOverlap || boundaryInside || (segDuration >= 0.2 && segStart <= end && segEnd >= start)),
   };
 }
 
 function transcriptDuringInterval(interval) {
-  if (!state.transcriptSegments.length) return [];
-  return state.transcriptSegments.filter(segment => transcriptOverlapInfo(interval, segment).meaningful);
+  const matches = state.transcriptSegments.filter(segment => transcriptOverlapInfo(interval, segment).meaningful);
+  const savedMatches = Array.isArray(interval.speech_overlap_segments) ? interval.speech_overlap_segments : [];
+  savedMatches.forEach(segment => {
+    const exists = matches.some(item => Math.abs(Number(item.start || 0) - Number(segment.start || 0)) < 0.05);
+    if (!exists) matches.push(segment);
+  });
+  return matches;
 }
 
 function backgroundInfoForInterval(interval) {
@@ -939,12 +943,13 @@ function backgroundInfoForInterval(interval) {
 
 function audioSeparationForInterval(interval) {
   const speech = transcriptDuringInterval(interval);
-  const transcriptReady = state.transcriptSegments.length > 0;
+  const metadataSaysSpeech = interval.speech_overlap === true;
+  const transcriptReady = state.transcriptSegments.length > 0 || interval.speech_checked === true || interval.speech_overlap === false || metadataSaysSpeech;
   const usefulDuration = Number(interval.duration || 0);
   const rawDuration = Number(interval.silence_duration || usefulDuration || 0);
-  const threshold = Number(state.project?.settings?.noise_db ?? els.noiseDb?.value ?? -35);
+  const threshold = Number(state.project?.settings?.noise_db ?? els.noiseDb?.value ?? -38);
   const background = backgroundInfoForInterval(interval);
-  const speechState = speech.length ? 'speech' : transcriptReady ? 'clear' : 'unknown';
+  const speechState = (speech.length || metadataSaysSpeech) ? 'speech' : transcriptReady ? 'clear' : 'unknown';
   const recommendationState = speechState === 'speech'
     ? 'speech'
     : !transcriptReady
@@ -986,7 +991,7 @@ function audioSeparationForInterval(interval) {
 
 function audioSplitHtml(interval) {
   const info = audioSeparationForInterval(interval);
-  const speechDetail = info.speech.length
+  const speechDetail = info.speechState === 'speech'
     ? 'Existe fala perto desta pausa. Confira antes de gravar para não narrar por cima de alguém.'
     : info.transcriptReady
       ? 'Não encontrei fala relevante nesta pausa. Agora confira o fundo: silêncio limpo é melhor; fundo audível pede revisão.'
@@ -1036,7 +1041,7 @@ function renderAudioInsightPanel() {
   const lowBackgroundCount = analyses.filter(item => item.bedState === 'low_background').length;
   const activeBackgroundCount = analyses.filter(item => item.bedState === 'active_background').length;
   const unmeasuredBackgroundCount = analyses.filter(item => item.bedState === 'unknown').length;
-  const threshold = Number(project.settings?.noise_db ?? els.noiseDb?.value ?? -35);
+  const threshold = Number(project.settings?.noise_db ?? els.noiseDb?.value ?? -38);
   const clearItems = intervals
     .filter(interval => audioSeparationForInterval(interval).recommendationState === 'clear')
     .sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0))
@@ -1170,6 +1175,19 @@ function timelineDetailRulerHtml(group) {
   `;
 }
 
+function timelineDetailTicksHtml(group) {
+  const span = Math.max(0.01, group.end - group.start);
+  const secondCount = Math.max(1, Math.ceil(span));
+  const step = secondCount > 120 ? Math.ceil(secondCount / 120) : 1;
+  const ticks = [];
+  for (let second = Math.ceil(group.start); second < group.end; second += step) {
+    const left = Math.max(0, Math.min(100, ((second - group.start) / span) * 100));
+    const major = second % 5 === 0 ? 'major' : '';
+    ticks.push(`<span class="timeline-detail-tick ${major}" style="left:${left}%"></span>`);
+  }
+  return `<div class="timeline-detail-ticks" aria-hidden="true">${ticks.join('')}</div>`;
+}
+
 function timelineDetailHtml(group) {
   if (!group || !group.intervals.length) return '';
   const span = Math.max(0.01, group.end - group.start);
@@ -1177,9 +1195,10 @@ function timelineDetailHtml(group) {
   const markers = group.intervals.map(interval => {
     const start = Math.max(group.start, Number(interval.start || group.start));
     const end = Math.min(group.end, Math.max(start, Number(interval.end || start)));
-    const left = Math.max(0, Math.min(99, ((start - group.start) / span) * 100));
+    const rawLeft = Math.max(0, Math.min(99.8, ((start - group.start) / span) * 100));
     const rawWidth = ((end - start) / span) * 100;
-    const width = Math.max(0.8, Math.min(100 - left, Math.max(3.2, rawWidth)));
+    const width = Math.max(1.2, Math.min(100, Math.max(3.2, rawWidth)));
+    const left = Math.max(0, Math.min(100 - width, rawLeft));
     let lane = lanes.findIndex(lastEnd => left >= lastEnd + 1.2);
     if (lane < 0) {
       lane = lanes.length;
@@ -1199,8 +1218,12 @@ function timelineDetailHtml(group) {
         <span>${fmtClock(group.start)} até ${fmtClock(group.end)} | ${group.intervals.length} pausa(s)</span>
       </div>
       ${timelineDetailRulerHtml(group)}
-      <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" aria-label="Pausas individuais da região escolhida">${markers}</div>
-      <p>Clique em uma faixa. A largura mostra a duração aproximada, o vídeo vai para o início dela e os detalhes aparecem na lateral.</p>
+      <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" data-start="${group.start}" data-end="${group.end}" aria-label="Pausas individuais da região escolhida">
+        ${timelineDetailTicksHtml(group)}
+        <i class="timeline-detail-playhead"></i>
+        ${markers}
+      </div>
+      <p>Clique em uma faixa. As linhas finas marcam segundos, a barra azul acompanha o tempo do vídeo e a largura da faixa mostra quanto dura a pausa.</p>
     </div>
   `;
 }
@@ -1285,6 +1308,20 @@ function updateTimelineProgress() {
   if (progress) progress.style.width = `${percent}%`;
   els.timelineTrack.querySelectorAll('.timeline-playhead').forEach(playhead => {
     playhead.style.left = `${percent}%`;
+  });
+  const time = Number(els.videoPlayer.currentTime || 0);
+  els.timelineTrack.querySelectorAll('.timeline-detail-lane').forEach(lane => {
+    const playhead = lane.querySelector('.timeline-detail-playhead');
+    if (!playhead) return;
+    const start = Number(lane.dataset.start || 0);
+    const end = Number(lane.dataset.end || start);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || time < start || time > end) {
+      playhead.style.display = 'none';
+      return;
+    }
+    const localPercent = Math.max(0, Math.min(100, ((time - start) / (end - start)) * 100));
+    playhead.style.display = 'block';
+    playhead.style.left = `${localPercent}%`;
   });
 }
 
