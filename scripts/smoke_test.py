@@ -45,7 +45,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260602-top-menus",
+            "20260602-speech-source",
             "Exportar ▾",
             "Histórico ▾",
             "Ver checklist",
