@@ -25,22 +25,18 @@ from .core.exporters import (
     export_srt,
 )
 from .core.ffmpeg_utils import (
+    annotate_audio_background,
     build_ad_audio_track,
     build_final_mixed_video,
-    detect_silences,
-    detect_silences_with_progress,
     ffmpeg_path,
     ffprobe_path,
     get_duration,
     recording_duration,
 )
 from .core.interval_tools import (
-    coalesce_auto_intervals,
     create_manual_interval,
-    mark_transcript_overlaps,
-    merge_interval_candidates,
     normalize_intervals,
-    speech_gap_intervals,
+    speech_first_intervals,
 )
 from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, safe_filename
 from .core.timecode import parse_float
@@ -231,6 +227,7 @@ def create_app() -> Flask:
                         fresh_project.get("intervals", []),
                         settings,
                     )
+                    fresh_project["analysis_strategy"] = "fala/transcricao"
                 store.save(fresh_project, reason="Checagem de voz gerada")
                 jobs.update(
                     job_id,
@@ -555,6 +552,7 @@ def create_app() -> Flask:
         if project.get("intervals"):
             settings = _parse_detection_settings(project, {})
             project["intervals"] = _with_transcript_gap_candidates(project, project.get("intervals", []), settings)
+            project["analysis_strategy"] = "fala/transcricao"
         store.save(project, reason="Checagem de voz atualizada")
         return ok({"project": project})
 
@@ -595,28 +593,122 @@ def create_app() -> Flask:
     ) -> list[dict[str, Any]]:
         transcript = project.get("transcript") or {}
         transcript_text = transcript.get("text") or ""
+        if not transcript_text.strip():
+            return normalize_intervals(intervals)
+
         duration = parse_float(project.get("duration"), 0)
-        speech_intervals = speech_gap_intervals(
-            transcript_text,
-            duration,
-            min_gap=settings["min_ad_duration"],
-            padding_start=settings["padding_start"],
-            padding_end=settings["padding_end"],
-        )
-        base = coalesce_auto_intervals(intervals)
-        if not speech_intervals:
-            return mark_transcript_overlaps(base, transcript_text)
-        return mark_transcript_overlaps(merge_interval_candidates(base, speech_intervals), transcript_text)
+        if transcript_text.strip():
+            speech_intervals = speech_first_intervals(
+                intervals,
+                transcript_text,
+                duration,
+                min_gap=settings["min_ad_duration"],
+                padding_start=settings["padding_start"],
+                padding_end=settings["padding_end"],
+            )
+            try:
+                speech_intervals = annotate_audio_background(
+                    store.video_path(project),
+                    speech_intervals,
+                    settings["noise_db"],
+                )
+            except Exception:
+                for interval in speech_intervals:
+                    interval["background_state"] = interval.get("background_state") or "unknown"
+                    interval["background_label"] = interval.get("background_label") or "fundo nao analisado"
+                    interval["background_detail"] = (
+                        interval.get("background_detail")
+                        or "A fala foi checada pela transcricao, mas o fundo nao foi medido. Ouça antes de gravar."
+                    )
+                    interval["background_sample_count"] = 0
+                    interval["background_method"] = "ffmpeg_astats_rms"
+                    interval["background_noise_db"] = settings["noise_db"]
+            return normalize_intervals(speech_intervals)
+
+    def _has_transcript_text(project: dict[str, Any]) -> bool:
+        return bool(str((project.get("transcript") or {}).get("text") or "").strip())
+
+    def _ensure_transcript_for_detection(project_id: str, detection_job_id: str) -> dict[str, Any]:
+        project = store.load(project_id)
+        if _has_transcript_text(project):
+            return project
+
+        active_job_id = active_transcription_jobs.get(project_id)
+        active_job = jobs.get(active_job_id) if active_job_id else None
+        if active_job and active_job.get("status") == "running" and active_job_id != detection_job_id:
+            jobs.update(
+                detection_job_id,
+                percent=5,
+                message="Aguardando checagem de fala...",
+                details="A deteccao agora usa a transcricao como base para achar espacos entre falas.",
+            )
+            for _ in range(7200):
+                time.sleep(1)
+                active_job = jobs.get(active_job_id)
+                if not active_job or active_job.get("status") != "running":
+                    break
+            project = store.load(project_id)
+            if _has_transcript_text(project):
+                return project
+
+        if importlib.util.find_spec("faster_whisper") is None:
+            return project
+
+        active_transcription_jobs[project_id] = detection_job_id
+        try:
+            _set_transcript_status(project, "running", source="automatic", error="", job_id=detection_job_id)
+            store.save(project, reason="Checagem de voz iniciada pela deteccao")
+
+            def progress(percent: float, message: str) -> None:
+                jobs.update(
+                    detection_job_id,
+                    percent=round(5 + (max(0.0, min(100.0, percent)) * 0.55), 1),
+                    message="Checando falas do video...",
+                    details=message,
+                )
+
+            result = transcribe_video(
+                store.video_path(project),
+                store.project_folder(project_id) / "transcription",
+                duration=float(project.get("duration") or 0),
+                progress_callback=progress,
+            )
+            fresh_project = store.load(project_id)
+            transcript_data = result_to_metadata(result)
+            transcript_data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            transcript_data["job_id"] = detection_job_id
+            fresh_project["transcript"] = transcript_data
+            store.save(fresh_project, reason="Checagem de voz gerada pela deteccao")
+            return fresh_project
+        except Exception as exc:
+            failed_project = store.load(project_id)
+            _set_transcript_status(
+                failed_project,
+                "error",
+                source="automatic",
+                error=friendly_exception_message(exc),
+                job_id=detection_job_id,
+            )
+            store.save(failed_project, reason="Falha na checagem de voz durante deteccao")
+            return failed_project
+        finally:
+            if active_transcription_jobs.get(project_id) == detection_job_id:
+                active_transcription_jobs.pop(project_id, None)
 
     def _project_with_current_analysis(project: dict[str, Any]) -> dict[str, Any]:
         intervals = project.get("intervals") or []
         if not intervals:
             return project
+        if not _has_transcript_text(project):
+            return project
         settings = _parse_detection_settings(project, {})
+        if _has_transcript_text(project) and project.get("analysis_strategy") == "fala/transcricao":
+            return project
         refreshed = _with_transcript_gap_candidates(project, intervals, settings)
         if refreshed != intervals:
             project["settings"] = settings
             project["intervals"] = refreshed
+            project["analysis_strategy"] = "fala/transcricao"
             store.save(project, reason="Análise de pausas atualizada ao abrir")
         return project
 
@@ -633,19 +725,22 @@ def create_app() -> Flask:
             def progress(percent: float, message: str) -> None:
                 jobs.update(job_id, percent=round(percent, 1), message=message, details="Aguarde. Em vídeos longos essa etapa pode levar alguns minutos.")
 
-            fresh_project = store.load(project_id)
-            intervals = detect_silences_with_progress(
-                store.video_path(fresh_project),
-                noise_db=settings["noise_db"],
-                min_silence=settings["min_silence"],
-                min_ad_duration=settings["min_ad_duration"],
-                padding_start=settings["padding_start"],
-                padding_end=settings["padding_end"],
-                progress_callback=progress,
+            fresh_project = _ensure_transcript_for_detection(project_id, job_id)
+            if not _has_transcript_text(fresh_project):
+                raise RuntimeError(
+                    "A checagem de fala precisa terminar antes de montar as pausas. "
+                    "Sem transcricao, o app nao cria cards por som baixo."
+                )
+            jobs.update(
+                job_id,
+                percent=68,
+                message="Montando pausas entre falas...",
+                details="A lista principal vem dos espacos sem fala encontrados na transcricao.",
             )
-            intervals = _with_transcript_gap_candidates(fresh_project, intervals, settings)
+            intervals = _with_transcript_gap_candidates(fresh_project, fresh_project.get("intervals", []), settings)
             fresh_project["settings"] = settings
             fresh_project["intervals"] = intervals
+            fresh_project["analysis_strategy"] = "fala/transcricao"
             store.save(fresh_project, reason="Detecção automática de pausas")
             jobs.update(
                 job_id,
@@ -653,7 +748,7 @@ def create_app() -> Flask:
                 percent=100,
                 message=f"Detecção concluída: {len(intervals)} intervalos encontrados.",
                 details="Você já pode revisar os cards de intervalo.",
-                result={"project": fresh_project, "message": f"{len(intervals)} intervalos encontrados."},
+                result={"project": fresh_project, "message": f"{len(intervals)} intervalos encontrados entre falas."},
             )
 
         jobs.run(job_id, work)
@@ -666,17 +761,16 @@ def create_app() -> Flask:
         data = request.get_json(force=True, silent=True) or {}
         settings = _parse_detection_settings(project, data)
 
-        intervals = detect_silences(
-            store.video_path(project),
-            noise_db=settings["noise_db"],
-            min_silence=settings["min_silence"],
-            min_ad_duration=settings["min_ad_duration"],
-            padding_start=settings["padding_start"],
-            padding_end=settings["padding_end"],
-        )
-        intervals = _with_transcript_gap_candidates(project, intervals, settings)
+        if not _has_transcript_text(project):
+            raise BadRequest(
+                "A checagem de fala precisa terminar antes de montar as pausas. "
+                "Sem transcricao, o app nao cria cards por som baixo."
+            )
+
+        intervals = _with_transcript_gap_candidates(project, project.get("intervals", []), settings)
         project["settings"] = settings
         project["intervals"] = intervals
+        project["analysis_strategy"] = "fala/transcricao"
         store.save(project, reason="Detecção automática de pausas")
         return ok({"project": project, "message": f"{len(intervals)} intervalos encontrados."})
 
@@ -914,7 +1008,8 @@ def run_app() -> None:
     print(f"Dados locais: {runtime_data_dir()}")
     print("Para encerrar, feche esta janela ou pressione Ctrl+C no terminal.")
     print("=" * 72)
-    open_browser_later(url)
+    if os.environ.get("AD_ASSIST_OPEN_BROWSER", "1") != "0":
+        open_browser_later(url)
     try:
         from waitress import serve
 

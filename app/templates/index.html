@@ -163,7 +163,7 @@
               <span><i class="legend-dot sem-fala"></i> verde: boa candidata para gravar</span>
               <span><i class="legend-dot fundo"></i> amarelo: ouvir o fundo antes</span>
               <span><i class="legend-dot fala"></i> vermelho: fala perto ou dentro da pausa</span>
-              <span><i class="legend-dot neutro"></i> cinza: falta checagem de fala</span>
+              <span><i class="legend-dot neutro"></i> cinza: aguardando checagem de fala</span>
             </div>
           </div>
           <details id="audioInsightPanel" class="audio-insight-panel compact-panel" aria-live="polite">
@@ -180,17 +180,17 @@
         </section>
 
         <section class="panel settings-panel">
-          <h2>3. Detectar pausas</h2>
+          <h2>3. Detectar pausas entre falas</h2>
           <div class="form-grid">
             <label>
-              Sensibilidade do som baixo (dB)
-              <input id="noiseDb" class="input" type="number" step="1" value="-38" title="dB é uma medida de volume. Números mais negativos exigem um fundo mais baixo antes de criar uma pausa.">
-              <small>dB é volume. -38 é mais seguro para começar. -25 aceita mais barulho; -50 só marca trechos quase silenciosos.</small>
+              Sensibilidade do fundo (dB)
+              <input id="noiseDb" class="input" type="number" step="1" value="-38" title="dB é uma medida de volume. Depois que a transcrição encontra as pausas, este campo só ajuda a avisar se o fundo está limpo ou audível.">
+              <small>Com fala checada, o dB só indica se o fundo é limpo, música, ambiente ou ruído. Ele não decide onde a pausa começa.</small>
             </label>
             <label>
-              Duração mínima do trecho baixo (s)
-              <input id="minSilence" class="input" type="number" step="0.1" value="1.2" title="Quanto tempo o som precisa ficar baixo para virar uma pausa candidata. Aumente para ignorar pausas muito curtas.">
-              <small>Ex.: 1,2s quer dizer que o som precisa ficar baixo por pelo menos 1,2 segundo.</small>
+              Duração mínima para medir o fundo (s)
+              <input id="minSilence" class="input" type="number" step="0.1" value="1.2" title="Tempo mínimo usado para medir o fundo dentro de uma pausa já encontrada pela transcrição.">
+              <small>Ajuda a medir trechos de fundo, mas a pausa principal vem do espaço entre falas.</small>
             </label>
             <label>
               Tempo mínimo para narrar (s)
@@ -203,7 +203,7 @@
               <small>Tempo extra antes/depois quando você clica em “Ver trecho”.</small>
             </label>
           </div>
-          <p class="settings-note" title="Resumo simples da lógica de detecção">A detecção usa duas pistas: volume baixo e transcrição com tempos. Verde aparece quando não há fala relevante e o fundo foi medido como seguro. Amarelo pede ouvir o fundo antes. Vermelho tem fala perto da pausa.</p>
+          <p class="settings-note" title="Resumo simples da lógica de detecção">A detecção usa a transcrição como base: primeiro encontra onde uma fala termina e a próxima começa. Depois o som só avisa se o fundo está limpo, tem música/ambiente ou precisa ser ouvido antes.</p>
           <details class="advanced">
             <summary>Configurações avançadas</summary>
             <div class="form-grid compact">
@@ -217,7 +217,7 @@
               </label>
             </div>
           </details>
-          <button class="button primary" id="detectBtn" disabled>Detectar pausas automaticamente</button>
+          <button class="button primary" id="detectBtn" disabled>Detectar pausas entre falas</button>
           <p id="detectSummary" class="hint"></p>
         </section>
       </section>

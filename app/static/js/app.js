@@ -194,13 +194,13 @@ function applyTooltips(root = document) {
     ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
     ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para abrir as pausas daquela parte e depois escolha uma barra.'],
     ['#audioInsightPanel', 'Checklist com as pausas mais seguras e as pausas que precisam ser ouvidas antes da gravação.'],
-    ['#noiseDb', 'Sensibilidade do volume baixo. -38 é mais seguro para começar. -25 aceita mais barulho; -50 exige quase silêncio.'],
-    ['#minSilence', 'Tempo mínimo que o som precisa ficar baixo para virar uma pausa candidata. Use valores maiores para evitar pausas picadas.'],
+    ['#noiseDb', 'Classifica o fundo das pausas. Com transcrição pronta, não decide onde a pausa começa; só avisa se o fundo é limpo ou audível.'],
+    ['#minSilence', 'Tempo mínimo usado para medir o fundo dentro de uma pausa que já foi encontrada pela transcrição.'],
     ['#minAdDuration', 'Menor tempo útil para caber uma narração curta de audiodescrição. Use valores maiores para evitar trechos apertados.'],
     ['#previewMargin', 'Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.'],
     ['#paddingStart', 'Corta um pedacinho do começo da pausa para evitar pegar final de fala.'],
     ['#paddingEnd', 'Corta um pedacinho do final da pausa para evitar pegar início de fala.'],
-    ['#detectBtn', 'Analisa o vídeo e monta a lista de intervalos prováveis para audiodescrição.'],
+    ['#detectBtn', 'Primeiro checa as falas do vídeo e monta pausas entre elas. O som baixo só classifica o fundo depois disso.'],
     ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
     ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
     ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
@@ -208,7 +208,7 @@ function applyTooltips(root = document) {
     ['.history-menu > summary', 'Abre pontos de retorno salvos automaticamente para restaurar uma versão anterior.'],
     ['#refreshHistoryBtn', 'Atualiza a lista de pontos de retorno salvos para este projeto.'],
     ['.help-panel', 'Guia rápido do fluxo principal: enviar vídeo, detectar pausas, revisar, gravar e exportar.'],
-    ['.settings-panel', 'Campos que definem como o sistema encontra pausas por som baixo e checagem de fala.'],
+    ['.settings-panel', 'Campos que ajustam a checagem de fala e a leitura do fundo das pausas.'],
     ['.intervals-panel', 'Lista paginada de pausas. Clique em uma pausa para editar o roteiro e gravar a narração.'],
   ];
   tips.forEach(([selector, tip]) => {
@@ -961,14 +961,14 @@ function audioSeparationForInterval(interval) {
     ? 'fala perto da pausa'
     : speechState === 'clear'
       ? 'sem fala relevante'
-      : 'sem checagem';
+      : 'aguardando fala';
   const recommendationLabel = recommendationState === 'speech'
     ? 'revisar fala antes'
     : recommendationState === 'caution'
       ? 'ouvir fundo antes'
       : recommendationState === 'clear'
         ? 'boa para testar'
-        : 'sem checagem';
+        : 'aguardando fala';
   return {
     speech,
     transcriptReady,
@@ -1028,7 +1028,7 @@ function renderAudioInsightPanel() {
         <span><strong>Checklist antes de gravar</strong><small>Ajuda a escolher por onde começar.</small></span>
         <span class="summary-action">Ver checklist ▾</span>
       </summary>
-      <p class="hint">Clique em detectar pausas. Depois o sistema separa fala, silêncio limpo e fundo audível.</p>
+      <p class="hint">Clique em detectar pausas. O sistema procura espaços entre falas e depois avisa se o fundo está limpo ou precisa ser ouvido.</p>
     `;
     return;
   }
@@ -1064,7 +1064,7 @@ function renderAudioInsightPanel() {
   };
   const clearHtml = clearItems.length
     ? clearItems.map(interval => miniButton(interval, 'clear', 'verde: boa candidata para gravar')).join('')
-    : `<p class="hint">Nenhuma pausa verde ainda. ${unmeasuredBackgroundCount ? 'Este projeto tem pausas com fundo não medido; rode “Detectar pausas automaticamente” de novo para medir o fundo e liberar verdes quando for seguro.' : 'Revise as amarelas e vermelhas antes de gravar.'}</p>`;
+    : `<p class="hint">Nenhuma pausa verde ainda. ${unknownCount ? 'A checagem de fala ainda está pendente em parte do projeto; aguarde ou rode “Detectar pausas entre falas”.' : unmeasuredBackgroundCount ? 'As pausas entre falas existem, mas o fundo ainda precisa ser medido ou ouvido antes.' : 'Revise as amarelas e vermelhas antes de gravar.'}</p>`;
   const cautionHtml = cautionItems.length
     ? cautionItems.map(interval => miniButton(interval, 'caution', 'amarela: ouvir fundo antes')).join('')
     : '<p class="hint">Nenhuma pausa amarela encontrada.</p>';
@@ -1087,10 +1087,10 @@ function renderAudioInsightPanel() {
         <span title="Verde aparece quando não há fala relevante e o fundo foi medido como seguro"><strong>${clearCount}</strong> verdes: melhores para testar</span>
         <span title="Amarelo quer dizer: não grave direto, ouça o fundo antes"><strong>${cautionCount}</strong> amarelas: ouvir fundo antes</span>
         <span title="Vermelho quer dizer: há fala perto ou dentro da pausa"><strong>${speechCount}</strong> vermelhas: revisar fala</span>
-        <span title="Cinza quer dizer que ainda falta checagem de fala"><strong>${unknownCount}</strong> cinzas: falta checagem</span>
+        <span title="Cinza quer dizer que a transcrição ainda não terminou ou não foi aplicada"><strong>${unknownCount}</strong> cinzas: aguardando fala</span>
         <span title="Medição de fundo já feita pelo FFmpeg"><strong>${quietCount}</strong> fundo limpo · <strong>${lowBackgroundCount + activeBackgroundCount}</strong> com fundo audível · <strong>${unmeasuredBackgroundCount}</strong> sem medição</span>
       </div>
-      <p class="audio-purpose">Por que pode não ter verde? Verde exige duas confirmações: sem fala relevante e fundo medido como seguro. Em projetos antigos, muitas pausas ficam amarelas porque o fundo ainda não foi medido.</p>
+      <p class="audio-purpose">Como ler: a pausa principal vem do espaço entre falas. Verde é o melhor ponto para testar; amarelo ainda pode servir, mas peça para ouvir o fundo; vermelho tem fala perto e deve ser evitado.</p>
       <div class="audio-attention-title">Comece por estas, se houver</div>
       <div class="audio-mini-list">${clearHtml}</div>
       <div class="audio-attention-title">Ouça o fundo antes de gravar</div>
@@ -1277,7 +1277,12 @@ function renderTimeline() {
   const gridStyle = `grid-template-columns: repeat(${groups.length}, minmax(0, 1fr));`;
   const recommendationCells = groups.map(group => timelineCellHtml(group, maxCount, state.currentIntervalIndex, 'recommendation', state.timelineSelectedGroupIndex)).join('');
 
-  els.timelineStatus.textContent = `${intervals.length} pausa(s) em ${fmtClock(duration)}. Clique numa região para ver as pausas daquela parte.`;
+  const strategyText = project.analysis_strategy === 'fala/transcricao'
+    ? 'pausas entre falas'
+    : project.analysis_strategy === 'audio/provisorio'
+      ? 'pausas provisórias por som baixo'
+      : 'pausas aguardando checagem de fala';
+  els.timelineStatus.textContent = `${intervals.length} pausa(s) em ${fmtClock(duration)} (${strategyText}). Clique numa região para ver as pausas daquela parte.`;
   els.timelineTrack.className = 'timeline-track editor';
   els.timelineTrack.innerHTML = `
     <div class="timeline-editor">
@@ -1286,7 +1291,7 @@ function renderTimeline() {
         <span class="timeline-lane-label">regiões</span>
         <div class="timeline-lane recommendation" style="${gridStyle}">${recommendationCells}<i class="timeline-playhead"></i></div>
       </div>
-      <div class="timeline-lane-help">Cada bloco junta pausas próximas. Verde = maioria sem fala relevante. Vermelho = maioria com começo/fim de fala perto da pausa. Cinza = sem checagem de fala.</div>
+      <div class="timeline-lane-help">Cada bloco junta pausas próximas. Com transcrição pronta, as pausas vêm dos espaços entre falas. Verde = sem fala e fundo seguro; amarelo = sem fala, mas ouça o fundo; vermelho = fala perto; cinza = aguardando checagem de fala.</div>
       ${timelineDetailHtml(currentGroup)}
     </div>
   `;
@@ -1601,7 +1606,7 @@ async function detectSilences() {
     padding_start: Number(els.paddingStart.value),
     padding_end: Number(els.paddingEnd.value),
   };
-  setLoading(true, 'Detectando pausas no vídeo...', 'Iniciando tarefa em segundo plano.', 1);
+  setLoading(true, 'Detectando pausas entre falas...', 'Primeiro o sistema checa a fala do vídeo. O som baixo só classifica o fundo depois que as pausas existem.', 1);
   try {
     const start = await api(`/api/projects/${state.project.id}/detect/start`, {
       method: 'POST',

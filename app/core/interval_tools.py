@@ -206,7 +206,8 @@ def mark_transcript_overlaps(
         return normalized
 
     for interval in normalized:
-        matches = [segment for segment in segments if _segment_overlaps_interval(segment, interval, margin=margin)]
+        interval_margin = 0.05 if interval.get("speech_gap_confirmed") else margin
+        matches = [segment for segment in segments if _segment_overlaps_interval(segment, interval, margin=interval_margin)]
         interval["speech_checked"] = True
         interval["speech_overlap"] = bool(matches)
         interval["speech_overlap_segments"] = [
@@ -223,6 +224,65 @@ def mark_transcript_overlaps(
             else "A transcricao nao encontrou fala relevante nesta pausa."
         )
     return normalized
+
+
+def _should_preserve_existing_interval(interval: dict[str, Any]) -> bool:
+    source = str(interval.get("detection_source") or "").lower()
+    return (
+        "manual" in source
+        or bool(str(interval.get("script") or "").strip())
+        or bool(str(interval.get("notes") or "").strip())
+        or bool(interval.get("recording_filename"))
+        or str(interval.get("status") or "pendente") not in {"", "pendente"}
+    )
+
+
+def _interval_overlap_ratio(left: dict[str, Any], right: dict[str, Any]) -> float:
+    left_start = _as_float(left.get("start"))
+    left_end = _as_float(left.get("end"), left_start)
+    right_start = _as_float(right.get("start"))
+    right_end = _as_float(right.get("end"), right_start)
+    duration = max(0.01, min(left_end - left_start, right_end - right_start))
+    overlap = max(0.0, min(left_end, right_end) - max(left_start, right_start))
+    return overlap / duration
+
+
+def speech_first_intervals(
+    existing_intervals: list[dict[str, Any]],
+    transcript_text: str,
+    duration: float,
+    *,
+    min_gap: float,
+    padding_start: float,
+    padding_end: float,
+) -> list[dict[str, Any]]:
+    speech_intervals = speech_gap_intervals(
+        transcript_text,
+        duration,
+        min_gap=min_gap,
+        padding_start=padding_start,
+        padding_end=padding_end,
+    )
+    if not speech_intervals:
+        return mark_transcript_overlaps(coalesce_auto_intervals(existing_intervals), transcript_text)
+
+    preserved = [dict(interval) for interval in existing_intervals if _should_preserve_existing_interval(interval)]
+    generated: list[dict[str, Any]] = []
+    for interval in speech_intervals:
+        if any(_interval_overlap_ratio(interval, kept) >= 0.65 for kept in preserved):
+            continue
+        interval = dict(interval)
+        interval["detection_source"] = "fala/transcricao"
+        interval["speech_gap_confirmed"] = True
+        interval["background_state"] = interval.get("background_state") or "unknown"
+        interval["background_label"] = interval.get("background_label") or "fundo nao medido"
+        interval["background_detail"] = (
+            interval.get("background_detail")
+            or "A transcricao encontrou um espaco sem fala. O fundo ainda sera usado apenas como aviso."
+        )
+        generated.append(interval)
+
+    return mark_transcript_overlaps(normalize_intervals(preserved + generated), transcript_text)
 
 
 def create_manual_interval(start: float, end: float, title: str | None = None) -> dict[str, Any]:

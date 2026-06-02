@@ -18,6 +18,7 @@ from app.core.interval_tools import (  # noqa: E402
     mark_transcript_overlaps,
     merge_interval_candidates,
     parse_timed_transcript_segments,
+    speech_first_intervals,
     speech_gap_intervals,
 )
 from app.core.projects import ProjectStore  # noqa: E402
@@ -118,7 +119,7 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(folder.exists())
 
-    def test_open_project_refreshes_saved_interval_analysis(self) -> None:
+    def test_open_project_does_not_create_speech_analysis_without_transcript(self) -> None:
         store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
         project = store.create_project("video_teste.mp4", title="Teste antigo")
         project["duration"] = 20
@@ -131,8 +132,18 @@ class SmokeTest(unittest.TestCase):
         response = self.client.get(f"/api/projects/{project['id']}")
         self.assertEqual(response.status_code, 200)
         refreshed = response.get_json()["project"]
-        self.assertEqual(len(refreshed["intervals"]), 1)
-        self.assertAlmostEqual(refreshed["intervals"][0]["end"], 3.2)
+        self.assertEqual(len(refreshed["intervals"]), 2)
+        self.assertNotEqual(refreshed.get("analysis_strategy"), "audio/provisorio")
+
+    def test_detect_route_requires_transcript_before_intervals(self) -> None:
+        store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
+        project = store.create_project("video_teste.mp4", title="Sem transcricao")
+        project["duration"] = 20
+        store.save(project, reason="Fixture sem transcricao")
+
+        response = self.client.post(f"/api/projects/{project['id']}/detect", json={})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("checagem de fala", response.get_data(as_text=True))
 
     def test_audio_background_classifier(self) -> None:
         self.assertEqual(_classify_audio_background([-120, -118, -119], -35)["state"], "quiet")
@@ -179,6 +190,27 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertAlmostEqual(merged[0]["start"], 10.0)
         self.assertAlmostEqual(merged[0]["end"], 12.5)
+
+    def test_transcript_gaps_replace_unedited_audio_intervals(self) -> None:
+        srt = (
+            "1\n00:00:00,000 --> 00:00:02,000\nfala inicial\n\n"
+            "2\n00:00:07,000 --> 00:00:09,000\nfala final\n"
+        )
+        old_audio_intervals = [
+            {"start": 20.0, "end": 21.0, "silence_start": 20.0, "silence_end": 21.0, "detection_source": "som baixo"},
+        ]
+        intervals = speech_first_intervals(
+            old_audio_intervals,
+            srt,
+            10,
+            min_gap=1.0,
+            padding_start=0.25,
+            padding_end=0.25,
+        )
+        self.assertEqual(len(intervals), 1)
+        self.assertEqual(intervals[0]["detection_source"], "fala/transcricao")
+        self.assertTrue(2.1 < intervals[0]["start"] < 2.5)
+        self.assertTrue(6.5 < intervals[0]["end"] < 7.0)
 
     def test_health_endpoint(self) -> None:
         response = self.client.get("/api/health")
