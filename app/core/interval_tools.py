@@ -6,6 +6,9 @@ from typing import Any
 VALID_STATUSES = {"pendente", "roteirizado", "gravado", "revisado", "descartado"}
 AUTO_MERGE_GAP_SECONDS = 0.75
 SPEECH_SAFETY_MARGIN_SECONDS = 0.25
+SPARSE_SPEECH_MIN_DURATION_SECONDS = 6.0
+SPARSE_SPEECH_SECONDS_PER_WORD = 0.85
+SPARSE_SPEECH_EXTRA_SECONDS = 0.8
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -340,6 +343,35 @@ def _parse_time(value: str) -> float:
     return hours * 3600 + minutes * 60 + seconds + millis / 1000
 
 
+def _speech_word_count(text: str) -> int:
+    return len(re.findall(r"[\wÀ-ÿ]+", text or "", flags=re.UNICODE))
+
+
+def _compact_sparse_speech_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compacted: list[dict[str, Any]] = []
+    for segment in segments:
+        start = max(0.0, _as_float(segment.get("start")))
+        end = max(start, _as_float(segment.get("end"), start))
+        text = str(segment.get("text") or "").strip()
+        duration = end - start
+        word_count = _speech_word_count(text)
+        plausible_duration = max(1.0, word_count * SPARSE_SPEECH_SECONDS_PER_WORD + SPARSE_SPEECH_EXTRA_SECONDS)
+        if duration >= SPARSE_SPEECH_MIN_DURATION_SECONDS and duration > plausible_duration * 2.2:
+            compacted.append(
+                {
+                    **segment,
+                    "start": round(start, 3),
+                    "end": round(min(end, start + plausible_duration), 3),
+                    "original_start": round(start, 3),
+                    "original_end": round(end, 3),
+                    "timing_adjusted": True,
+                }
+            )
+            continue
+        compacted.append({**segment, "start": round(start, 3), "end": round(end, 3)})
+    return compacted
+
+
 def parse_timed_transcript_segments(text: str) -> list[dict[str, Any]]:
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     segments: list[dict[str, Any]] = []
@@ -363,7 +395,7 @@ def parse_timed_transcript_segments(text: str) -> list[dict[str, Any]]:
         )
 
     if segments:
-        return _merge_speech_segments(segments)
+        return _compact_sparse_speech_segments(_merge_speech_segments(segments))
 
     line_re = re.compile(
         r"^\s*(?P<time>(?:(?:\d{1,2}:)?\d{1,2}:)?\d{2}[,.]\d{1,3}|(?:\d{1,2}:)?\d{1,2}:\d{2})\s+"
@@ -373,7 +405,7 @@ def parse_timed_transcript_segments(text: str) -> list[dict[str, Any]]:
     for match in line_re.finditer(text):
         start = _parse_time(match.group("time"))
         segments.append({"start": round(start, 3), "end": round(start + 2.0, 3), "text": match.group("text").strip()})
-    return _merge_speech_segments(segments)
+    return _compact_sparse_speech_segments(_merge_speech_segments(segments))
 
 
 def _merge_speech_segments(segments: list[dict[str, Any]], tolerance: float = 0.25) -> list[dict[str, Any]]:
@@ -409,14 +441,36 @@ def speech_gap_intervals(
 
     gaps: list[dict[str, Any]] = []
     cursor = 0.0
+    previous_segment: dict[str, Any] | None = None
     for segment in segments:
         speech_start = max(0.0, _as_float(segment.get("start")))
         speech_end = max(speech_start, _as_float(segment.get("end")))
         if speech_start > cursor:
-            gaps.append(_speech_gap_candidate(cursor, speech_start, min_gap, padding_start, padding_end))
+            gaps.append(
+                _speech_gap_candidate(
+                    cursor,
+                    speech_start,
+                    min_gap,
+                    padding_start,
+                    padding_end,
+                    previous_speech=previous_segment,
+                    next_speech=segment,
+                )
+            )
         cursor = max(cursor, speech_end)
+        previous_segment = segment
     if duration > cursor:
-        gaps.append(_speech_gap_candidate(cursor, duration, min_gap, padding_start, padding_end))
+        gaps.append(
+            _speech_gap_candidate(
+                cursor,
+                duration,
+                min_gap,
+                padding_start,
+                padding_end,
+                previous_speech=previous_segment,
+                next_speech=None,
+            )
+        )
     return [gap for gap in gaps if gap]
 
 
@@ -426,6 +480,9 @@ def _speech_gap_candidate(
     min_gap: float,
     padding_start: float,
     padding_end: float,
+    *,
+    previous_speech: dict[str, Any] | None = None,
+    next_speech: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     safe_start = max(0.0, raw_start + max(0.0, padding_start))
     safe_end = max(safe_start, raw_end - max(0.0, padding_end))
@@ -441,9 +498,23 @@ def _speech_gap_candidate(
             "detection_source": "fala/transcricao",
             "speech_gap_confirmed": True,
             "background_detail": "A transcricao indicou que nao ha fala neste espaco. O fundo ainda precisa ser ouvido.",
+            "previous_speech": _speech_context_payload(previous_speech),
+            "next_speech": _speech_context_payload(next_speech),
         }
     )
     return interval
+
+
+def _speech_context_payload(segment: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not segment:
+        return None
+    text = " ".join(str(segment.get("text") or "").split())
+    return {
+        "start": round(_as_float(segment.get("start")), 3),
+        "end": round(_as_float(segment.get("end")), 3),
+        "text": text[:260],
+        "timing_adjusted": bool(segment.get("timing_adjusted")),
+    }
 
 
 def merge_interval_candidates(

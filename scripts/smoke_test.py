@@ -46,7 +46,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260602-speech-source",
+            "20260603-speech-gap-context",
             "Exportar ▾",
             "Histórico ▾",
             "Ver checklist",
@@ -67,6 +67,7 @@ class SmokeTest(unittest.TestCase):
             "function intervalRowHtml",
             "function applyTooltips",
             "function updateSelectedSegmentBar",
+            "function speechContextHtml",
             "function timelineDetailRulerHtml",
             "[5, 10, 15, 20, 30, 50]",
             "function timelineGroups",
@@ -89,6 +90,7 @@ class SmokeTest(unittest.TestCase):
             ".speed-control",
             ".top-menu-popover",
             ".selected-segment-bar",
+            ".speech-context",
             ".timeline-detail-ruler",
             ".timeline-detail-tick",
             ".timeline-detail-playhead",
@@ -233,6 +235,19 @@ class SmokeTest(unittest.TestCase):
         gaps = speech_gap_intervals(srt, 10, min_gap=1.0, padding_start=0.1, padding_end=0.1)
         self.assertTrue(any(2.0 < gap["start"] < 3.0 and 5.0 < gap["end"] < 6.0 for gap in gaps))
         self.assertTrue(all(gap["detection_source"] == "fala/transcricao" for gap in gaps))
+        self.assertEqual(gaps[0]["previous_speech"]["text"], "fala inicial")
+        self.assertEqual(gaps[0]["next_speech"]["text"], "fala final")
+
+    def test_sparse_transcript_segment_does_not_hide_long_pause(self) -> None:
+        srt = (
+            "1\n00:00:00,000 --> 00:01:00,000\nobrigado\n\n"
+            "2\n00:01:20,000 --> 00:01:22,000\nfala depois\n"
+        )
+        segments = parse_timed_transcript_segments(srt)
+        self.assertLess(segments[0]["end"], 5)
+        self.assertTrue(segments[0]["timing_adjusted"])
+        gaps = speech_gap_intervals(srt, 90, min_gap=1.0, padding_start=0.25, padding_end=0.25)
+        self.assertTrue(any(gap["start"] < 3 and gap["end"] > 79 for gap in gaps))
 
     def test_confirmed_speech_gap_ignores_boundary_speech(self) -> None:
         srt = (

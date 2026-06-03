@@ -580,6 +580,46 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .audio-pill.bed { background: #fff1c9; color: #7f4b00; }
 .audio-split p { margin: 0 0 4px; font-size: 13px; line-height: 1.45; }
 .audio-split small { color: var(--muted); line-height: 1.35; display: block; }
+.speech-context {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.speech-context h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.speech-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.speech-context-item {
+  min-width: 0;
+  padding: 8px;
+  border-left: 3px solid #2f5be8;
+  background: #f7f9ff;
+}
+.speech-context-item strong,
+.speech-context-item span,
+.speech-context-item em {
+  display: block;
+}
+.speech-context-item span,
+.speech-context-item em,
+.speech-context-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+.speech-context-item p {
+  margin: 5px 0 0;
+  color: var(--text);
+}
+.speech-context-item.muted {
+  border-left-color: #c5cfdd;
+  background: #f8fafc;
+}
 
 .label, label { display: block; font-weight: 700; margin: 12px 0 7px; color: #27354a; }
 .input, .textarea {
@@ -1184,6 +1224,7 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .form-grid,
   .status-row,
   .transcript-tools,
+  .speech-context-grid,
   .audio-summary-grid {
     grid-template-columns: 1fr;
   }

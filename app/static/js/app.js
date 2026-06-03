@@ -871,7 +871,8 @@ function transcriptOverlapInfo(interval, segment) {
   const rawStart = Number(interval.start || 0);
   const rawEnd = Number(interval.end || rawStart);
   const rawDuration = Math.max(0.01, rawEnd - rawStart);
-  const safetyMargin = Math.min(0.8, Math.max(0.25, rawDuration * 0.18));
+  const confirmedSpeechGap = interval.speech_gap_confirmed === true;
+  const safetyMargin = confirmedSpeechGap ? 0.02 : Math.min(0.8, Math.max(0.25, rawDuration * 0.18));
   const start = Math.max(0, rawStart - safetyMargin);
   const end = Math.max(start + 0.01, rawEnd + safetyMargin);
   const bodyDuration = Math.max(0.01, rawEnd - rawStart);
@@ -887,12 +888,14 @@ function transcriptOverlapInfo(interval, segment) {
     || (segEnd >= rawStart - boundaryPadding && segEnd <= rawEnd + boundaryPadding);
   const text = String(segment.text || '').trim();
   const meaningfulOverlap = overlap >= 0.05;
+  const boundarySpeech = !confirmedSpeechGap && boundaryInside;
+  const paddedOverlap = !confirmedSpeechGap && segDuration >= 0.2 && segStart <= end && segEnd >= start;
 
   return {
     overlap,
     overlapRatio,
     boundaryInside,
-    meaningful: Boolean(text) && (meaningfulOverlap || boundaryInside || (segDuration >= 0.2 && segStart <= end && segEnd >= start)),
+    meaningful: Boolean(text) && (meaningfulOverlap || boundarySpeech || paddedOverlap),
   };
 }
 
@@ -1004,10 +1007,51 @@ function audioSplitHtml(interval) {
         <span class="audio-pill meter">${info.bedRmsText}</span>
       </div>
       <p>${speechDetail}</p>
+      ${speechContextHtml(interval)}
       <small>${escapeHtml(info.bedDetail)} A ferramenta não reconhece instrumentos por nome; ela mede fundo audível e cruza com a checagem de voz para evitar gravar por cima de falas.</small>
     </div>
   `;
 }
+
+function speechContextLine(label, segment) {
+  if (!segment || !String(segment.text || '').trim()) {
+    return `
+      <div class="speech-context-item muted">
+        <strong>${label}</strong>
+        <span>Nenhuma fala registrada deste lado da pausa.</span>
+      </div>
+    `;
+  }
+  const adjusted = segment.timing_adjusted
+    ? '<em>tempo ajustado: a transcricao parecia longa demais</em>'
+    : '';
+  return `
+    <div class="speech-context-item">
+      <strong>${label}</strong>
+      <span>${fmt(segment.start)} ate ${fmt(segment.end)}</span>
+      <p>${escapeHtml(segment.text)}</p>
+      ${adjusted}
+    </div>
+  `;
+}
+
+function speechContextHtml(interval) {
+  const previous = interval.previous_speech || null;
+  const next = interval.next_speech || null;
+  if (!previous && !next) {
+    return '<p class="speech-context-empty">Esta pausa veio da transcricao, mas o contexto das falas ainda nao foi salvo. Rode a deteccao novamente para atualizar.</p>';
+  }
+  return `
+    <div class="speech-context" title="Mostra a fala que terminou antes da pausa e a fala que comeca depois dela">
+      <h4>Pausa criada entre estas falas</h4>
+      <div class="speech-context-grid">
+        ${speechContextLine('Fala antes', previous)}
+        ${speechContextLine('Fala depois', next)}
+      </div>
+    </div>
+  `;
+}
+
 function renderAudioInsightPanel() {
   if (!els.audioInsightPanel) return;
   const project = state.project;

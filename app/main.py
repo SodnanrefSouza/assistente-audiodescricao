@@ -43,7 +43,7 @@ from .core.projects import ALLOWED_EXTENSIONS, VALID_STATUSES, ProjectStore, saf
 from .core.timecode import parse_float
 from .core.transcription import result_to_metadata, transcribe_video
 
-SPEECH_ANALYSIS_VERSION = "20260602-speech-boundary-v2"
+SPEECH_ANALYSIS_VERSION = "20260603-speech-gap-context-v3"
 
 
 def resource_root() -> Path:
