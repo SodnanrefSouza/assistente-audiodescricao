@@ -146,6 +146,15 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .top-menu-popover.export-actions {
   justify-content: flex-start;
 }
+.settings-popover {
+  width: min(780px, calc(100vw - 48px));
+}
+.settings-popover .form-grid {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+.settings-popover .settings-note {
+  margin-top: 10px;
+}
 .history-popover {
   width: min(520px, calc(100vw - 48px));
 }
@@ -159,8 +168,8 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .history-menu-header p {
   margin: 0;
 }
-.grid-two { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(330px,0.8fr); gap: 18px; }
-.video { width: 100%; max-height: 520px; background: #080b14; border-radius: var(--radius); border: 1px solid #101526; }
+.grid-two { display: grid; grid-template-columns: minmax(0,1fr); gap: 18px; }
+.video { width: 100%; max-height: min(72vh, 720px); background: #080b14; border-radius: var(--radius); border: 1px solid #101526; }
 .selected-segment-bar {
   margin-top: 10px;
   border: 1px solid #d7e2ff;

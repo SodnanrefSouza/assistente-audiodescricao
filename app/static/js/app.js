@@ -177,6 +177,57 @@ function parseIntervalTimeField(value, fallback = 0) {
   return parsed === null || !Number.isFinite(parsed) ? fallback : Math.max(0, parsed);
 }
 
+function normalizeDecimalText(value, allowNegative = false, decimals = 3, maxLength = 12) {
+  let text = String(value || '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const negative = allowNegative && text.trim().startsWith('-');
+  text = text.replace(/-/g, '');
+  const parts = text.split('.');
+  let integer = parts.shift() || '';
+  let decimal = parts.join('');
+  if (decimals <= 0) decimal = '';
+  else decimal = decimal.slice(0, decimals);
+  integer = integer.replace(/^0+(?=\d)/, '');
+  text = `${negative ? '-' : ''}${integer || '0'}${decimal ? `.${decimal}` : ''}`;
+  return text.slice(0, maxLength);
+}
+
+function sanitizeNumberInput(input, { clamp = false } = {}) {
+  if (!input) return;
+  const min = Number(input.dataset.min ?? input.getAttribute('min') ?? 0);
+  const max = Number(input.dataset.max ?? input.getAttribute('max') ?? Number.POSITIVE_INFINITY);
+  const decimals = Number(input.dataset.decimals ?? 3);
+  const maxLength = Number(input.getAttribute('maxlength') || input.dataset.maxlength || 12);
+  const allowNegative = Number.isFinite(min) && min < 0;
+  const previous = input.value;
+  input.value = normalizeDecimalText(previous, allowNegative, decimals, maxLength);
+  if (!clamp) return;
+  let value = Number(input.value);
+  if (!Number.isFinite(value)) value = Number.isFinite(min) ? min : 0;
+  if (Number.isFinite(min)) value = Math.max(min, value);
+  if (Number.isFinite(max)) value = Math.min(max, value);
+  input.value = decimals <= 0 ? String(Math.round(value)) : value.toFixed(decimals).replace(/\.?0+$/, '');
+}
+
+function enforceInputLimits(root = document) {
+  root.querySelectorAll('input[maxlength], textarea[maxlength]').forEach(input => {
+    if (input.dataset.limitBound === 'true') return;
+    input.dataset.limitBound = 'true';
+    input.addEventListener('input', () => {
+      const maxLength = Number(input.getAttribute('maxlength') || 0);
+      if (maxLength && input.value.length > maxLength) {
+        input.value = input.value.slice(0, maxLength);
+      }
+    });
+  });
+  root.querySelectorAll('[data-number-field], .start-input, .end-input, .duration-input').forEach(input => {
+    if (input.dataset.numberBound === 'true') return;
+    input.dataset.numberBound = 'true';
+    input.addEventListener('input', () => sanitizeNumberInput(input));
+    input.addEventListener('change', () => sanitizeNumberInput(input, { clamp: true }));
+    input.addEventListener('blur', () => sanitizeNumberInput(input, { clamp: true }));
+  });
+}
+
 function statusLabel(status) {
   const labels = {
     pendente: 'Pendente',
@@ -211,16 +262,14 @@ function applyTooltips(root = document) {
     ['#detectBtn', 'Primeiro checa as falas do vídeo e monta pausas entre elas. A leitura do fundo só avisa se vale ouvir antes.'],
     ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
     ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
-    ['.start-input', 'Tempo em que a audiodescricao pode comecar. Aceita segundos ou 00:00:12.500.'],
-    ['.end-input', 'Tempo em que esse intervalo termina. Ajuste se a pausa ficou curta ou longa demais.'],
-    ['.duration-input', 'Tamanho do intervalo em segundos. Ao alterar, o fim e recalculado a partir do inicio.'],
+    ['.start-input', 'Inicio do intervalo em segundos. Use apenas numeros, por exemplo 12.500.'],
+    ['.end-input', 'Fim do intervalo em segundos. Use apenas numeros, por exemplo 15.250.'],
+    ['.duration-input', 'Duracao do intervalo em segundos. Ao alterar, o fim e recalculado a partir do inicio.'],
     ['.recording-preview', 'Toca uma previa sincronizada: o video vai para o trecho e a narracao entra no tempo certo.'],
     ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
     ['.export-menu > summary', 'Abre os botões para baixar roteiro, planilha, áudio de audiodescrição ou vídeo final.'],
-    ['.history-menu > summary', 'Abre pontos de retorno salvos automaticamente para restaurar uma versão anterior.'],
-    ['#refreshHistoryBtn', 'Atualiza a lista de pontos de retorno salvos para este projeto.'],
+    ['.settings-menu > summary', 'Abre os ajustes de deteccao que normalmente ficam fechados para manter a tela limpa.'],
     ['.help-panel', 'Guia rápido do fluxo principal: enviar vídeo, detectar pausas, revisar, gravar e exportar.'],
-    ['.settings-panel', 'Campos que ajustam a checagem de fala e a leitura do fundo das pausas.'],
     ['.intervals-panel', 'Lista paginada de pausas. Clique em uma pausa para editar o roteiro e gravar a narração.'],
   ];
   tips.forEach(([selector, tip]) => {
@@ -703,7 +752,7 @@ function setProject(project) {
   if (els.saveNotesBtn) els.saveNotesBtn.disabled = false;
   if (els.projectNotes) els.projectNotes.value = project.notes || '';
   els.saveTranscriptBtn.disabled = false;
-  els.refreshHistoryBtn.disabled = false;
+  if (els.refreshHistoryBtn) els.refreshHistoryBtn.disabled = false;
   els.transcriptText.value = project.transcript?.text || '';
   const s = project.settings || {};
   els.noiseDb.value = s.noise_db ?? -38;
@@ -720,7 +769,7 @@ function setProject(project) {
   renderTimeline();
   renderAudioInsightPanel();
   renderIntervals();
-  loadHistory();
+  if (els.historyList) loadHistory();
 }
 
 function clearProject() {
@@ -748,7 +797,7 @@ function clearProject() {
   if (els.saveNotesBtn) els.saveNotesBtn.disabled = true;
   els.saveTranscriptBtn.disabled = true;
   els.transcribeBtn.disabled = true;
-  els.refreshHistoryBtn.disabled = true;
+  if (els.refreshHistoryBtn) els.refreshHistoryBtn.disabled = true;
   els.prevPauseBtn.disabled = true;
   els.nextPendingBtn.disabled = true;
   els.nextPauseBtn.disabled = true;
@@ -759,8 +808,10 @@ function clearProject() {
   setHtml(els.transcriptPreview, '');
   setHtml(els.allTranscriptList, '<p class="hint">Cole uma transcrição para ver todas as falas aqui.</p>');
   updateTranscriptStatus();
-  els.historyList.className = 'history-list empty';
-  els.historyList.textContent = 'Abra um projeto para ver o histórico.';
+  if (els.historyList) {
+    els.historyList.className = 'history-list empty';
+    els.historyList.textContent = 'Abra um projeto para ver o histórico.';
+  }
   updateWorkflowPanel();
   renderTimeline();
   renderAudioInsightPanel();
@@ -1177,7 +1228,9 @@ function timelineGroups(intervals, duration, maxGroups = 48) {
   }));
   intervals.forEach(interval => {
     const start = Math.max(0, Number(interval.start || 0));
-    const groupIndex = Math.max(0, Math.min(groupCount - 1, Math.floor((start / Math.max(duration, 1)) * groupCount)));
+    const end = Math.max(start, Number(interval.end || start));
+    const midpoint = Math.max(0, Math.min(duration || end, start + ((end - start) / 2)));
+    const groupIndex = Math.max(0, Math.min(groupCount - 1, Math.floor((midpoint / Math.max(duration, 1)) * groupCount)));
     const group = groups[groupIndex];
     const info = audioSeparationForInterval(interval);
     group.intervals.push(interval);
@@ -1224,10 +1277,23 @@ function selectedTimelineGroup(groups) {
   return current || groups.find(group => group.intervals.length) || null;
 }
 
+function timelineDetailBounds(group) {
+  if (!group || !group.intervals?.length) {
+    return { start: group?.start || 0, end: group?.end || 0 };
+  }
+  const starts = group.intervals.map(interval => Math.max(0, Number(interval.start || group.start)));
+  const ends = group.intervals.map(interval => Math.max(Number(interval.start || group.start), Number(interval.end || group.end)));
+  return {
+    start: Math.min(group.start, ...starts),
+    end: Math.max(group.end, ...ends),
+  };
+}
+
 function timelineDetailRulerHtml(group) {
-  const span = Math.max(0.01, group.end - group.start);
+  const bounds = timelineDetailBounds(group);
+  const span = Math.max(0.01, bounds.end - bounds.start);
   const stepCount = Math.min(6, Math.max(3, Math.ceil(span / 20)));
-  const marks = Array.from({ length: stepCount + 1 }, (_, index) => group.start + ((span * index) / stepCount));
+  const marks = Array.from({ length: stepCount + 1 }, (_, index) => bounds.start + ((span * index) / stepCount));
   return `
     <div class="timeline-detail-ruler" style="--ruler-steps:${marks.length}" aria-hidden="true">
       ${marks.map(mark => `<span>${fmtClock(mark)}</span>`).join('')}
@@ -1236,12 +1302,13 @@ function timelineDetailRulerHtml(group) {
 }
 
 function timelineDetailTicksHtml(group) {
-  const span = Math.max(0.01, group.end - group.start);
+  const bounds = timelineDetailBounds(group);
+  const span = Math.max(0.01, bounds.end - bounds.start);
   const secondCount = Math.max(1, Math.ceil(span));
   const step = secondCount > 120 ? Math.ceil(secondCount / 120) : 1;
   const ticks = [];
-  for (let second = Math.ceil(group.start); second < group.end; second += step) {
-    const left = Math.max(0, Math.min(100, ((second - group.start) / span) * 100));
+  for (let second = Math.ceil(bounds.start); second < bounds.end; second += step) {
+    const left = Math.max(0, Math.min(100, ((second - bounds.start) / span) * 100));
     const major = second % 5 === 0 ? 'major' : '';
     ticks.push(`<span class="timeline-detail-tick ${major}" style="left:${left}%"></span>`);
   }
@@ -1250,14 +1317,15 @@ function timelineDetailTicksHtml(group) {
 
 function timelineDetailHtml(group) {
   if (!group || !group.intervals.length) return '';
-  const span = Math.max(0.01, group.end - group.start);
+  const bounds = timelineDetailBounds(group);
+  const span = Math.max(0.01, bounds.end - bounds.start);
   const lanes = [];
   const markers = group.intervals.map(interval => {
-    const start = Math.max(group.start, Number(interval.start || group.start));
-    const end = Math.min(group.end, Math.max(start, Number(interval.end || start)));
-    const rawLeft = Math.max(0, Math.min(99.8, ((start - group.start) / span) * 100));
+    const start = Math.max(bounds.start, Number(interval.start || bounds.start));
+    const end = Math.min(bounds.end, Math.max(start + 0.05, Number(interval.end || start)));
+    const rawLeft = Math.max(0, Math.min(99.8, ((start - bounds.start) / span) * 100));
     const rawWidth = ((end - start) / span) * 100;
-    const width = Math.max(1.2, Math.min(100, Math.max(3.2, rawWidth)));
+    const width = Math.min(100, Math.max(1.2, Math.max(3.2, rawWidth)));
     const left = Math.max(0, Math.min(100 - width, rawLeft));
     let lane = lanes.findIndex(lastEnd => left >= lastEnd + 1.2);
     if (lane < 0) {
@@ -1278,7 +1346,7 @@ function timelineDetailHtml(group) {
         <span>${fmtClock(group.start)} até ${fmtClock(group.end)} | ${group.intervals.length} pausa(s)</span>
       </div>
       ${timelineDetailRulerHtml(group)}
-      <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" data-start="${group.start}" data-end="${group.end}" aria-label="Pausas individuais da região escolhida">
+      <div class="timeline-detail-lane" style="--detail-lanes:${laneCount}" data-start="${bounds.start}" data-end="${bounds.end}" aria-label="Pausas individuais da região escolhida">
         ${timelineDetailTicksHtml(group)}
         <i class="timeline-detail-playhead"></i>
         ${markers}
@@ -1752,6 +1820,9 @@ async function pollJob(jobId, onDone) {
 async function detectSilences() {
   if (!state.project) return;
   hideError();
+  [els.noiseDb, els.minSilence, els.minAdDuration, els.previewMargin, els.paddingStart, els.paddingEnd]
+    .filter(Boolean)
+    .forEach(input => sanitizeNumberInput(input, { clamp: true }));
   const body = {
     noise_db: Number(els.noiseDb.value),
     min_silence: Number(els.minSilence.value),
@@ -1963,7 +2034,7 @@ function intervalDetailHtml(project, interval) {
         <summary>Editar roteiro e status</summary>
         <div class="status-row">
           <label>Título
-            <input class="input title-input" value="${escapeHtml(interval.title || '')}">
+            <input class="input title-input" maxlength="80" autocomplete="off" value="${escapeHtml(interval.title || '')}">
           </label>
           <label>Status
             <select class="input status-input" title="Use o status para controlar o andamento deste intervalo">
@@ -1971,15 +2042,15 @@ function intervalDetailHtml(project, interval) {
             </select>
           </label>
         </div>
-        <div class="time-edit-grid" title="Ajuste fino do comeco e do fim desta pausa. Aceita segundos ou formato 00:00:12.500.">
-          <label>Inicio do intervalo
-            <input class="input start-input" value="${Number(interval.start || 0).toFixed(3)}" placeholder="00:00:00.000" inputmode="decimal">
+        <div class="time-edit-grid" title="Ajuste fino do comeco e do fim desta pausa. Use segundos com ponto ou virgula, por exemplo 12.500.">
+          <label>Inicio do intervalo (s)
+            <input class="input start-input" type="text" value="${Number(interval.start || 0).toFixed(3)}" placeholder="0.000" inputmode="decimal" maxlength="10" data-number-field data-min="0" data-max="${Number(project.duration || 999999).toFixed(3)}" data-decimals="3">
           </label>
-          <label>Fim do intervalo
-            <input class="input end-input" value="${Number(interval.end || 0).toFixed(3)}" placeholder="00:00:03.000" inputmode="decimal">
+          <label>Fim do intervalo (s)
+            <input class="input end-input" type="text" value="${Number(interval.end || 0).toFixed(3)}" placeholder="3.000" inputmode="decimal" maxlength="10" data-number-field data-min="0" data-max="${Number(project.duration || 999999).toFixed(3)}" data-decimals="3">
           </label>
-          <label>Duracao
-            <input class="input duration-input" value="${Number(interval.duration || 0).toFixed(3)}" placeholder="3.0" inputmode="decimal">
+          <label>Duracao (s)
+            <input class="input duration-input" type="text" value="${Number(interval.duration || 0).toFixed(3)}" placeholder="3.000" inputmode="decimal" maxlength="8" data-number-field data-min="0.1" data-max="${Number(project.duration || 999999).toFixed(3)}" data-decimals="3">
           </label>
         </div>
         <div class="time-edit-actions">
@@ -1987,10 +2058,10 @@ function intervalDetailHtml(project, interval) {
           <button class="button" type="button" data-action="set-end-current" title="Usa o tempo atual do video como fim deste intervalo">Usar tempo atual como fim</button>
         </div>
         <label>Roteiro da audiodescrição
-          <textarea class="textarea script-input" rows="4" placeholder="Escreva aqui o que será narrado nesse intervalo...">${escapeHtml(interval.script || '')}</textarea>
+          <textarea class="textarea script-input" rows="4" maxlength="1200" placeholder="Escreva aqui o que será narrado nesse intervalo...">${escapeHtml(interval.script || '')}</textarea>
         </label>
         <label>Observações internas
-          <textarea class="textarea notes-input" rows="2" placeholder="Ex.: regravar mais curto, validar com a turma, som ambiente importante...">${escapeHtml(interval.notes || '')}</textarea>
+          <textarea class="textarea notes-input" rows="2" maxlength="600" placeholder="Ex.: regravar mais curto, validar com a turma, som ambiente importante...">${escapeHtml(interval.notes || '')}</textarea>
         </label>
         <div class="save-row">
           <button class="button primary" data-action="save" title="Salva este intervalo; alterações também ficam em autosave">Salvar intervalo</button>
@@ -2019,6 +2090,7 @@ function intervalDetailHtml(project, interval) {
 function bindIntervalDetail(interval) {
   const card = document.getElementById(`interval-${interval.index}`);
   if (!card) return;
+  enforceInputLimits(card);
   card.querySelector('[data-action="play"]')?.addEventListener('click', () => playSegment(interval));
   card.querySelector('[data-action="jump"]')?.addEventListener('click', () => jumpToStart(interval));
   card.querySelector('[data-action="position"]')?.addEventListener('click', () => positionAtStart(interval));
@@ -2094,7 +2166,7 @@ function renderIntervals() {
     if (els.intervalPager) els.intervalPager.hidden = true;
     updateSelectedSegmentBar(null);
     els.intervalsContainer.className = 'intervals empty-state';
-    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas automaticamente” ou use “Adicionar intervalo aqui” no vídeo.</p>';
+    els.intervalsContainer.innerHTML = '<h3>Nenhum intervalo detectado ainda.</h3><p>Clique em “Detectar pausas entre falas” ou use “Adicionar intervalo aqui” no vídeo.</p>';
     return;
   }
   if (!filtered.length) {
@@ -2145,14 +2217,15 @@ function renderIntervals() {
   bindIntervalDetail(selected);
 }
 function intervalPayloadFromCard(card) {
+  card.querySelectorAll('[data-number-field], .start-input, .end-input, .duration-input').forEach(input => sanitizeNumberInput(input, { clamp: true }));
   const start = parseIntervalTimeField(card.querySelector('.start-input')?.value, 0);
   const end = parseIntervalTimeField(card.querySelector('.end-input')?.value, start + 0.1);
   const duration = Math.max(0.1, parseIntervalTimeField(card.querySelector('.duration-input')?.value, end - start));
   return {
-    title: card.querySelector('.title-input').value,
+    title: card.querySelector('.title-input').value.slice(0, 80),
     status: card.querySelector('.status-input').value,
-    script: card.querySelector('.script-input').value,
-    notes: card.querySelector('.notes-input').value,
+    script: card.querySelector('.script-input').value.slice(0, 1200),
+    notes: card.querySelector('.notes-input').value.slice(0, 600),
     start,
     end,
     duration,
@@ -2327,7 +2400,7 @@ function renderTranscriptPreview() {
 }
 
 async function loadHistory() {
-  if (!state.project) return;
+  if (!state.project || !els.historyList) return;
   try {
     const res = await api(`/api/projects/${state.project.id}/history`);
     renderHistory(res.history || []);
@@ -2338,6 +2411,7 @@ async function loadHistory() {
 }
 
 function renderHistory(history) {
+  if (!els.historyList) return;
   history = (history || []).filter(item => !/transcri/i.test(String(item.reason || '')));
   if (!history.length) {
     els.historyList.className = 'history-list empty';
@@ -2514,15 +2588,15 @@ function bindEvents() {
       if (state.project) saveNotes();
     }, 1600);
   });
-  els.saveTranscriptBtn.addEventListener('click', saveTranscript);
-  els.refreshHistoryBtn.addEventListener('click', loadHistory);
-  els.transcriptSearch.addEventListener('input', renderTranscriptPreview);
-  els.transcriptContextSeconds.addEventListener('change', () => {
+  els.saveTranscriptBtn?.addEventListener('click', saveTranscript);
+  els.refreshHistoryBtn?.addEventListener('click', loadHistory);
+  els.transcriptSearch?.addEventListener('input', renderTranscriptPreview);
+  els.transcriptContextSeconds?.addEventListener('change', () => {
     renderIntervals();
     renderTimeline();
     renderAudioInsightPanel();
   });
-  els.transcriptText.addEventListener('input', () => {
+  els.transcriptText?.addEventListener('input', () => {
     renderTranscriptPreview();
     renderIntervals();
     renderTimeline();
@@ -2577,6 +2651,7 @@ function bindEvents() {
 async function init() {
   applyVisualPrefs();
   applyTooltips();
+  enforceInputLimits();
   bindEvents();
   await checkHealth();
   await loadProjects();

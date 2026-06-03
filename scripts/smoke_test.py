@@ -47,12 +47,16 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260603-speech-gap-context",
+            "20260603-clean-layout",
+            "Detectar pausas entre falas",
+            "Ajustes de detecção",
             "Exportar ▾",
-            "Histórico ▾",
             "Ver checklist",
+            'data-number-field data-min="-80"',
+            'maxlength="80"',
         ):
             self.assertIn(expected, html)
+        self.assertNotIn("Histórico ▾", html)
 
     def test_static_assets_include_timeline_controls(self) -> None:
         js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -67,12 +71,16 @@ class SmokeTest(unittest.TestCase):
             "function deleteInterval",
             "function intervalRowHtml",
             "function applyTooltips",
+            "function enforceInputLimits",
+            "function sanitizeNumberInput",
             "function updateSelectedSegmentBar",
             "function speechContextHtml",
             "function timelineDetailRulerHtml",
+            "function timelineDetailBounds",
             "[5, 10, 15, 20, 30, 50]",
             "function timelineGroups",
             "function timelineDetailTicksHtml",
+            "midpoint",
             "playbackRate",
             "intervalPageSize",
             "backgroundInfoForInterval",
@@ -83,6 +91,7 @@ class SmokeTest(unittest.TestCase):
             "function syncEndFieldFromDuration",
             "start-input",
             "duration-input",
+            "maxlength=\"1200\"",
         ):
             self.assertIn(expected, js)
         for expected in (
@@ -95,6 +104,7 @@ class SmokeTest(unittest.TestCase):
             ".project-open",
             ".speed-control",
             ".top-menu-popover",
+            ".settings-popover",
             ".selected-segment-bar",
             ".speech-context",
             ".timeline-detail-ruler",

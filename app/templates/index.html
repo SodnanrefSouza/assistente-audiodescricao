@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260603-speech-gap-context">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260603-clean-layout">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -40,9 +40,9 @@
   <main class="layout">
     <aside class="sidebar">
       <section class="panel">
-        <h2>1. Novo projeto</h2>
+        <h2>Novo projeto</h2>
         <label class="label" for="projectTitle">Nome do projeto</label>
-        <input id="projectTitle" class="input" type="text" placeholder="Ex.: Curta do Ícaro - versão 1">
+        <input id="projectTitle" class="input" type="text" maxlength="80" autocomplete="off" placeholder="Ex.: Curta do Ícaro - versão 1">
 
         <label class="label" for="videoFile">Vídeo</label>
         <div class="file-picker">
@@ -79,6 +79,49 @@
           <p id="currentMeta" class="muted">Crie ou abra um projeto para começar.</p>
         </div>
         <div class="header-actions">
+          <button class="button primary" id="detectBtn" disabled title="Analisa a transcrição e cria pausas entre falas. O som de fundo entra depois como aviso.">Detectar pausas entre falas</button>
+          <details class="top-menu settings-menu">
+            <summary class="button menu-summary" title="Abre os ajustes finos usados na detecção e na checagem do fundo">Ajustes de detecção ▾</summary>
+            <div class="top-menu-popover settings-popover" aria-label="Ajustes de detecção">
+              <div class="form-grid">
+                <label>
+                  Sensibilidade do fundo (dB)
+                  <input id="noiseDb" class="input" type="text" inputmode="decimal" value="-38" maxlength="4" data-number-field data-min="-80" data-max="0" data-decimals="0" title="dB é uma medida de volume. Depois que a transcrição encontra as pausas, este campo só ajuda a avisar se o fundo está limpo ou audível.">
+                  <small>O dB não cria a pausa. Ele só avisa se o fundo parece limpo, música, ambiente ou ruído.</small>
+                </label>
+                <label>
+                  Duração mínima para medir o fundo (s)
+                  <input id="minSilence" class="input" type="text" inputmode="decimal" value="1.2" maxlength="5" data-number-field data-min="0.2" data-max="10" data-decimals="1" title="Tempo mínimo usado para medir o fundo dentro de uma pausa já encontrada pela transcrição.">
+                  <small>Ajuda a medir o fundo, mas a pausa principal vem do espaço entre falas.</small>
+                </label>
+                <label>
+                  Tempo mínimo para narrar (s)
+                  <input id="minAdDuration" class="input" type="text" inputmode="decimal" value="1.2" maxlength="5" data-number-field data-min="0.2" data-max="30" data-decimals="1" title="Menor duração aceitável para inserir uma audiodescrição. Aumente se as pausas estiverem curtas demais.">
+                  <small>Menor espaço que deve sobrar para gravar uma frase curta.</small>
+                </label>
+                <label>
+                  Margem para ouvir contexto (s)
+                  <input id="previewMargin" class="input" type="text" inputmode="decimal" value="2.0" maxlength="5" data-number-field data-min="0" data-max="30" data-decimals="1" title="Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.">
+                  <small>Tempo extra antes/depois quando você clica em “Ver trecho”.</small>
+                </label>
+              </div>
+              <p class="settings-note" title="Resumo simples da lógica de detecção">A detecção usa a transcrição como base: primeiro encontra onde uma fala termina e a próxima começa. Depois o som só avisa se o fundo está limpo, tem música/ambiente ou precisa ser ouvido antes.</p>
+              <details class="advanced">
+                <summary>Configurações avançadas</summary>
+                <div class="form-grid compact">
+                  <label>
+                    Cortar início do silêncio (s)
+                    <input id="paddingStart" class="input" type="text" inputmode="decimal" value="0.25" maxlength="4" data-number-field data-min="0" data-max="5" data-decimals="2">
+                  </label>
+                  <label>
+                    Cortar fim do silêncio (s)
+                    <input id="paddingEnd" class="input" type="text" inputmode="decimal" value="0.25" maxlength="4" data-number-field data-min="0" data-max="5" data-decimals="2">
+                  </label>
+                </div>
+              </details>
+              <p id="detectSummary" class="hint"></p>
+            </div>
+          </details>
           <details class="top-menu export-menu">
             <summary class="button menu-summary" title="Abre os arquivos que podem ser baixados deste projeto">Exportar ▾</summary>
             <div class="top-menu-popover export-actions" aria-label="Formatos de exportação">
@@ -90,16 +133,6 @@
               <button class="button" data-export="json" disabled title="Baixa uma cópia completa do projeto em JSON">Projeto .json</button>
               <button class="button success" data-export="ad_audio" disabled title="Gera e baixa a faixa de audiodescrição em WAV">Faixa AD .wav</button>
               <button class="button success" data-export="final_video" disabled title="Gera e baixa o vídeo final com a narração misturada">Vídeo final .mp4</button>
-            </div>
-          </details>
-          <details class="top-menu history-menu">
-            <summary class="button menu-summary" title="Abre pontos de retorno salvos automaticamente">Histórico ▾</summary>
-            <div class="top-menu-popover history-popover" aria-label="Histórico de trabalho">
-              <div class="history-menu-header">
-                <p class="muted">Use só se precisar voltar para uma versão anterior.</p>
-                <button class="button" id="refreshHistoryBtn" disabled title="Recarrega os pontos de retorno deste projeto">Atualizar</button>
-              </div>
-              <div id="historyList" class="history-list empty">Abra um projeto para ver o histórico.</div>
             </div>
           </details>
           <button class="button ghost danger" id="deleteProjectBtn" disabled>Excluir projeto</button>
@@ -123,7 +156,7 @@
 
       <section class="grid-two">
         <section class="panel video-panel" id="videoPanel">
-          <h2>2. Revisão do vídeo</h2>
+          <h2>Revisão do vídeo</h2>
           <video id="videoPlayer" class="video" controls preload="metadata"></video>
           <div id="selectedSegmentBar" class="selected-segment-bar" hidden aria-live="polite" title="Mostra onde começa e termina a pausa selecionada dentro do vídeo inteiro">
             <div class="segment-bar-header">
@@ -178,48 +211,6 @@
           </details>
           <p class="hint">Dica: use os botões “Ver trecho” nos intervalos para ouvir a pausa com contexto.</p>
         </section>
-
-        <section class="panel settings-panel">
-          <h2>3. Detectar pausas entre falas</h2>
-          <div class="form-grid">
-            <label>
-              Sensibilidade do fundo (dB)
-              <input id="noiseDb" class="input" type="number" step="1" value="-38" title="dB é uma medida de volume. Depois que a transcrição encontra as pausas, este campo só ajuda a avisar se o fundo está limpo ou audível.">
-              <small>Com fala checada, o dB só indica se o fundo é limpo, música, ambiente ou ruído. Ele não decide onde a pausa começa.</small>
-            </label>
-            <label>
-              Duração mínima para medir o fundo (s)
-              <input id="minSilence" class="input" type="number" step="0.1" value="1.2" title="Tempo mínimo usado para medir o fundo dentro de uma pausa já encontrada pela transcrição.">
-              <small>Ajuda a medir trechos de fundo, mas a pausa principal vem do espaço entre falas.</small>
-            </label>
-            <label>
-              Tempo mínimo para narrar (s)
-              <input id="minAdDuration" class="input" type="number" step="0.1" value="1.2" title="Menor duração aceitável para inserir uma audiodescrição. Aumente se as pausas estiverem curtas demais para falar.">
-              <small>Menor espaço que deve sobrar para gravar uma frase curta.</small>
-            </label>
-            <label>
-              Margem para ouvir contexto (s)
-              <input id="previewMargin" class="input" type="number" step="0.5" value="2.0" title="Tempo extra tocado antes e depois da pausa quando você usa Ver trecho.">
-              <small>Tempo extra antes/depois quando você clica em “Ver trecho”.</small>
-            </label>
-          </div>
-          <p class="settings-note" title="Resumo simples da lógica de detecção">A detecção usa a transcrição como base: primeiro encontra onde uma fala termina e a próxima começa. Depois o som só avisa se o fundo está limpo, tem música/ambiente ou precisa ser ouvido antes.</p>
-          <details class="advanced">
-            <summary>Configurações avançadas</summary>
-            <div class="form-grid compact">
-              <label>
-                Cortar início do silêncio (s)
-                <input id="paddingStart" class="input" type="number" step="0.05" value="0.25">
-              </label>
-              <label>
-                Cortar fim do silêncio (s)
-                <input id="paddingEnd" class="input" type="number" step="0.05" value="0.25">
-              </label>
-            </div>
-          </details>
-          <button class="button primary" id="detectBtn" disabled>Detectar pausas entre falas</button>
-          <p id="detectSummary" class="hint"></p>
-        </section>
       </section>
 
       <section class="panel transcript-panel" hidden aria-hidden="true">
@@ -240,15 +231,15 @@
         </div>
         <div id="transcriptStatus" class="transcript-status" aria-live="polite">Abra um projeto para gerar a transcrição do vídeo.</div>
         <label class="label" for="transcriptText">Texto da transcrição</label>
-        <textarea id="transcriptText" class="textarea transcript-textarea" rows="5" placeholder="Aceita SRT/VTT ou linhas como 00:01:23 fala do vídeo..."></textarea>
+        <textarea id="transcriptText" class="textarea transcript-textarea" rows="5" maxlength="200000" spellcheck="false" placeholder="Aceita SRT/VTT ou linhas como 00:01:23 fala do vídeo..."></textarea>
         <div class="transcript-tools">
           <label>
             Buscar na transcrição
-            <input id="transcriptSearch" class="input" type="search" placeholder="Digite uma palavra ou frase">
+            <input id="transcriptSearch" class="input" type="search" maxlength="80" placeholder="Digite uma palavra ou frase">
           </label>
           <label>
             Contexto antes/depois (s)
-            <input id="transcriptContextSeconds" class="input" type="number" min="2" max="60" step="1" value="10">
+            <input id="transcriptContextSeconds" class="input" type="text" inputmode="numeric" min="2" max="60" step="1" value="10" maxlength="2" data-number-field data-min="2" data-max="60" data-decimals="0">
           </label>
         </div>
         <div id="transcriptPreview" class="transcript-preview" aria-live="polite"></div>
@@ -262,11 +253,11 @@
       <section class="panel intervals-panel">
         <div class="intervals-header">
           <div>
-            <h2>5. Intervalos encontrados</h2>
+            <h2>Intervalos encontrados</h2>
             <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em uma pausa para abrir os detalhes ao lado em telas grandes, ou logo abaixo no celular.</p>
           </div>
           <div class="filters">
-            <input id="searchIntervals" class="input" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
+            <input id="searchIntervals" class="input" maxlength="80" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
             <select id="statusFilter" class="input" title="Filtra os intervalos pelo status de revisão">
               <option value="">Todos os status</option>
               <option value="pendente">Pendente</option>
@@ -281,7 +272,7 @@
         <div id="intervalPager" class="interval-pager" hidden aria-live="polite"></div>
         <div id="intervalsContainer" class="intervals empty-state">
           <h3>Nenhum intervalo detectado ainda.</h3>
-          <p>Abra um vídeo e clique em “Detectar pausas automaticamente”.</p>
+          <p>Abra um vídeo e clique em “Detectar pausas entre falas”.</p>
         </div>
       </section>
     </section>
@@ -307,6 +298,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260603-speech-gap-context"></script>
+  <script src="/static/js/app.js?v=20260603-clean-layout"></script>
 </body>
 </html>
