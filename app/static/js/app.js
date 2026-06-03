@@ -69,6 +69,7 @@ const els = {
   markReviewedBtn: $('markReviewedBtn'),
   videoPanel: $('videoPanel'),
   videoPlayer: $('videoPlayer'),
+  videoTimeReadout: $('videoTimeReadout'),
   selectedSegmentBar: $('selectedSegmentBar'),
   selectedSegmentLabel: $('selectedSegmentLabel'),
   segmentRangeMarker: $('segmentRangeMarker'),
@@ -158,7 +159,7 @@ function fmtClock(seconds) {
   const s = total % 60;
   const m = Math.floor(total / 60) % 60;
   const h = Math.floor(total / 3600);
-  return h ? `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s` : `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function parseTimeToSeconds(value) {
@@ -250,6 +251,7 @@ function applyTooltips(root = document) {
     ['#nextPauseBtn', 'Vai para a próxima pausa em relação ao tempo atual do vídeo.'],
     ['#markReviewedBtn', 'Marca o intervalo atual como revisado.'],
     ['#playbackSpeed', 'Muda apenas a velocidade de reprodução para revisar o vídeo mais rápido ou mais devagar.'],
+    ['#videoTimeReadout', 'Mostra onde o player está no vídeo e a duração total no formato 00:00:00.'],
     ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
     ['#timelineTrack', 'Linha do tempo das pausas. Clique em uma região para abrir as pausas daquela parte e depois escolha uma barra.'],
     ['#audioInsightPanel', 'Checklist com as pausas mais seguras e as pausas que precisam ser ouvidas antes da gravação.'],
@@ -648,6 +650,13 @@ function updateSelectedSegmentBar(interval) {
   els.selectedSegmentBar.title = `Pausa ${selected.index}: começa em ${fmt(start)} e termina em ${fmt(end)}.`;
 }
 
+function updateVideoTimeReadout() {
+  if (!els.videoTimeReadout || !els.videoPlayer) return;
+  const current = Number(els.videoPlayer.currentTime || 0);
+  const duration = Number(state.project?.duration || els.videoPlayer.duration || 0);
+  els.videoTimeReadout.textContent = `Tempo do vídeo: ${fmtClock(current)} / ${fmtClock(duration)}`;
+}
+
 function goToInterval(index, autoplay = true) {
   if (!state.project) return;
   const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
@@ -738,7 +747,7 @@ function setProject(project) {
   state.intervalPage = 1;
   state.transcriptSegments = parseTranscript(project.transcript?.text || '');
   els.currentTitle.textContent = project.title || 'Projeto sem nome';
-  els.currentMeta.textContent = `${project.source_filename || ''} • duração ${fmt(project.duration || 0)} • ${project.intervals?.length || 0} intervalos`;
+  els.currentMeta.textContent = `${project.source_filename || ''} • duração ${fmtClock(project.duration || 0)} • ${project.intervals?.length || 0} intervalos`;
   els.videoPlayer.src = `/media/${project.id}/video`;
   els.deleteProjectBtn.disabled = false;
   els.detectBtn.disabled = false;
@@ -766,6 +775,7 @@ function setProject(project) {
   updateTranscriptStatus();
   renderTranscriptPreview();
   updateSelectedSegmentBar();
+  updateVideoTimeReadout();
   renderTimeline();
   renderAudioInsightPanel();
   renderIntervals();
@@ -2569,6 +2579,26 @@ function setupPlayerButtons() {
   });
 }
 
+function setupTopMenus() {
+  const menus = Array.from(document.querySelectorAll('details.top-menu'));
+  menus.forEach(menu => {
+    menu.addEventListener('toggle', () => {
+      if (!menu.open) return;
+      menus.forEach(other => {
+        if (other !== menu) other.removeAttribute('open');
+      });
+    });
+  });
+  document.addEventListener('click', event => {
+    if (event.target.closest('details.top-menu')) return;
+    menus.forEach(menu => menu.removeAttribute('open'));
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    menus.forEach(menu => menu.removeAttribute('open'));
+  });
+}
+
 function bindEvents() {
   els.contrastToggle.addEventListener('click', () => toggleVisualPref('contrast'));
   els.largeTextToggle.addEventListener('click', () => toggleVisualPref('largeText'));
@@ -2634,10 +2664,14 @@ function bindEvents() {
   els.videoPlayer.addEventListener('ended', () => stopAdPreviewAudio());
   els.videoPlayer.addEventListener('volumechange', syncAdPreviewToVideo);
   els.videoPlayer.addEventListener('timeupdate', () => {
+    updateVideoTimeReadout();
     updateTimelineProgress();
     syncAdPreviewToVideo();
   });
-  els.videoPlayer.addEventListener('loadedmetadata', renderTimeline);
+  els.videoPlayer.addEventListener('loadedmetadata', () => {
+    updateVideoTimeReadout();
+    renderTimeline();
+  });
   els.playbackSpeed?.addEventListener('change', () => {
     els.videoPlayer.playbackRate = Number(els.playbackSpeed.value || 1);
     syncAdPreviewToVideo();
@@ -2645,6 +2679,7 @@ function bindEvents() {
   });
   els.dismissErrorBtn.addEventListener('click', hideError);
   els.closeLoadingBtn.addEventListener('click', () => setLoading(false));
+  setupTopMenus();
   setupPlayerButtons();
 }
 
@@ -2653,6 +2688,7 @@ async function init() {
   applyTooltips();
   enforceInputLimits();
   bindEvents();
+  updateVideoTimeReadout();
   await checkHealth();
   await loadProjects();
 }

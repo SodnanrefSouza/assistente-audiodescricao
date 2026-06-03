@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260603-clean-layout">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260603-menu-time">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -158,6 +158,9 @@
         <section class="panel video-panel" id="videoPanel">
           <h2>Revisão do vídeo</h2>
           <video id="videoPlayer" class="video" controls preload="metadata"></video>
+          <div id="videoTimeReadout" class="video-time-readout" aria-live="polite" title="Mostra o tempo atual e a duração total no formato hora:minuto:segundo">
+            Tempo do vídeo: 00:00:00 / 00:00:00
+          </div>
           <div id="selectedSegmentBar" class="selected-segment-bar" hidden aria-live="polite" title="Mostra onde começa e termina a pausa selecionada dentro do vídeo inteiro">
             <div class="segment-bar-header">
               <strong>Trecho selecionado no vídeo</strong>
@@ -298,6 +301,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260603-clean-layout"></script>
+  <script src="/static/js/app.js?v=20260603-menu-time"></script>
 </body>
 </html>
