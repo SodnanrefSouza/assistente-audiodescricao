@@ -876,10 +876,62 @@ def create_app() -> Flask:
                 if key == "status" and value not in VALID_STATUSES:
                     raise BadRequest("Status inválido para o intervalo.")
                 interval[key] = value
+        if any(key in data for key in ("start", "end", "duration")):
+            project_duration = parse_float(project.get("duration"), 0)
+            current_start = parse_float(interval.get("start"), parse_float(interval.get("silence_start"), 0))
+            current_end = parse_float(interval.get("end"), parse_float(interval.get("silence_end"), current_start + 0.1))
+            current_length = max(0.1, current_end - current_start)
+            start = max(0.0, parse_float(data.get("start"), current_start))
+            if "duration" in data and data.get("duration") not in (None, ""):
+                end = start + max(0.1, parse_float(data.get("duration"), current_length))
+            else:
+                end = parse_float(data.get("end"), current_end)
+                if "start" in data and "end" not in data:
+                    end = start + current_length
+            if "end" in data and data.get("end") not in (None, ""):
+                end = parse_float(data.get("end"), end)
+            if project_duration:
+                start = min(start, max(0.0, project_duration - 0.1))
+                end = min(max(start + 0.1, end), project_duration)
+            if end <= start:
+                raise BadRequest("O fim do intervalo precisa ser maior que o inicio.")
+            length = end - start
+            timing_was_changed = abs(start - current_start) > 0.001 or abs(end - current_end) > 0.001
+            interval["start"] = round(start, 3)
+            interval["end"] = round(end, 3)
+            interval["duration"] = round(length, 3)
+            interval["silence_start"] = round(start, 3)
+            interval["silence_end"] = round(end, 3)
+            interval["silence_duration"] = round(length, 3)
+            if timing_was_changed:
+                interval["quality"] = ""
+                interval["timing_edited_manually"] = True
+                source = str(interval.get("detection_source") or "fala/transcricao")
+                if "manual" not in source.lower() and "ajuste manual" not in source.lower():
+                    interval["detection_source"] = f"{source} + ajuste manual"
         if interval.get("script") and interval.get("status") == "pendente":
             interval["status"] = "roteirizado"
+        if interval.get("recording_duration"):
+            rec_duration = parse_float(interval.get("recording_duration"), 0)
+            interval_duration = parse_float(interval.get("duration"), 0)
+            if rec_duration and interval_duration and rec_duration > interval_duration:
+                interval["warning"] = (
+                    f"A gravação tem {rec_duration:.2f}s e o intervalo tem {interval_duration:.2f}s. "
+                    "Ela pode invadir uma fala ou som importante. Considere regravar mais curta ou usar audiodescrição estendida."
+                )
+            else:
+                interval["warning"] = ""
+        project["intervals"] = normalize_intervals(intervals)
+        updated = min(
+            project["intervals"],
+            key=lambda item: abs(parse_float(item.get("start"), 0) - parse_float(interval.get("start"), 0))
+            + abs(parse_float(item.get("end"), 0) - parse_float(interval.get("end"), 0)),
+        )
+        workflow = project.get("workflow") or {}
+        workflow["current_interval"] = updated.get("index")
+        project["workflow"] = workflow
         store.save(project, reason=f"Intervalo {index} atualizado")
-        return ok({"project": project, "interval": interval})
+        return ok({"project": project, "interval": updated})
 
     @app.post("/api/projects/<project_id>/recordings/<int:index>")
     def upload_recording(project_id: str, index: int):

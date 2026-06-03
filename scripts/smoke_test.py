@@ -15,6 +15,7 @@ os.environ.setdefault("AD_ASSIST_DATA_DIR", str(Path(tempfile.gettempdir()) / "a
 from app.main import create_app  # noqa: E402
 from app.core.ffmpeg_utils import _classify_audio_background, _parse_rms_samples  # noqa: E402
 from app.core.interval_tools import (  # noqa: E402
+    create_manual_interval,
     mark_transcript_overlaps,
     merge_interval_candidates,
     parse_timed_transcript_segments,
@@ -77,6 +78,11 @@ class SmokeTest(unittest.TestCase):
             "backgroundInfoForInterval",
             "recommendationState",
             "speech_overlap_segments",
+            "function syncAdPreviewToVideo",
+            "function startAdPreviewSync",
+            "function syncEndFieldFromDuration",
+            "start-input",
+            "duration-input",
         ):
             self.assertIn(expected, js)
         for expected in (
@@ -100,6 +106,8 @@ class SmokeTest(unittest.TestCase):
             "body[data-contrast=\"high\"] :focus-visible",
             "audio-background states",
             ".timeline-cell.caution",
+            ".time-edit-grid",
+            ".recording-preview-wrap",
         ):
             self.assertIn(expected, css)
 
@@ -175,6 +183,24 @@ class SmokeTest(unittest.TestCase):
         projects = response.get_json()["projects"]
         current = next(item for item in projects if item["id"] == project["id"])
         self.assertEqual(current["interval_count"], 0)
+
+    def test_update_interval_accepts_manual_timing_edits(self) -> None:
+        store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))
+        project = store.create_project("video_teste.mp4", title="Teste ajuste tempo")
+        project["duration"] = 20
+        project["intervals"] = [create_manual_interval(1.0, 3.0, "Manual")]
+        store.save(project, reason="Fixture ajuste tempo")
+
+        response = self.client.post(
+            f"/api/projects/{project['id']}/intervals/1",
+            json={"start": 5.0, "duration": 4.0, "title": "Manual ajustado"},
+        )
+        self.assertEqual(response.status_code, 200)
+        interval = response.get_json()["interval"]
+        self.assertAlmostEqual(interval["start"], 5.0)
+        self.assertAlmostEqual(interval["end"], 9.0)
+        self.assertAlmostEqual(interval["duration"], 4.0)
+        self.assertTrue(interval["timing_edited_manually"])
 
     def test_word_timestamp_segments_keep_real_speech_gaps(self) -> None:
         class Word:

@@ -35,6 +35,9 @@ const state = {
   activeTranscriptJob: null,
   autoTranscriptionProjects: new Set(),
   segmentPreviewStopper: null,
+  adPreviewAudios: new Map(),
+  adPreviewAnimation: null,
+  adPreviewEnabled: true,
   visualPrefs: readVisualPrefs(),
 };
 
@@ -169,6 +172,11 @@ function parseTimeToSeconds(value) {
   return null;
 }
 
+function parseIntervalTimeField(value, fallback = 0) {
+  const parsed = parseTimeToSeconds(value);
+  return parsed === null || !Number.isFinite(parsed) ? fallback : Math.max(0, parsed);
+}
+
 function statusLabel(status) {
   const labels = {
     pendente: 'Pendente',
@@ -203,6 +211,10 @@ function applyTooltips(root = document) {
     ['#detectBtn', 'Primeiro checa as falas do vídeo e monta pausas entre elas. A leitura do fundo só avisa se vale ouvir antes.'],
     ['#searchIntervals', 'Procura intervalos pelo título, roteiro ou observações internas.'],
     ['#statusFilter', 'Mostra apenas intervalos com o status escolhido.'],
+    ['.start-input', 'Tempo em que a audiodescricao pode comecar. Aceita segundos ou 00:00:12.500.'],
+    ['.end-input', 'Tempo em que esse intervalo termina. Ajuste se a pausa ficou curta ou longa demais.'],
+    ['.duration-input', 'Tamanho do intervalo em segundos. Ao alterar, o fim e recalculado a partir do inicio.'],
+    ['.recording-preview', 'Toca uma previa sincronizada: o video vai para o trecho e a narracao entra no tempo certo.'],
     ['#addIntervalListBtn', 'Cria manualmente um intervalo no tempo atual do vídeo. Use quando a detecção automática perdeu uma pausa.'],
     ['.export-menu > summary', 'Abre os botões para baixar roteiro, planilha, áudio de audiodescrição ou vídeo final.'],
     ['.history-menu > summary', 'Abre pontos de retorno salvos automaticamente para restaurar uma versão anterior.'],
@@ -666,6 +678,8 @@ async function openProject(projectId) {
 }
 
 function setProject(project) {
+  stopAdPreviewAudio();
+  state.adPreviewAudios.clear();
   state.project = project;
   const savedCurrent = project.workflow?.current_interval || null;
   const hasSavedCurrent = (project.intervals || []).some(interval => Number(interval.index) === Number(savedCurrent));
@@ -710,6 +724,8 @@ function setProject(project) {
 }
 
 function clearProject() {
+  stopAdPreviewAudio();
+  state.adPreviewAudios.clear();
   state.project = null;
   state.currentIntervalIndex = null;
   state.selectedIntervalIndex = null;
@@ -1399,6 +1415,99 @@ function clearSegmentPreviewStopper() {
   if (video && handler) video.removeEventListener('timeupdate', handler);
   if (fallback) clearTimeout(fallback);
   state.segmentPreviewStopper = null;
+  stopAdPreviewAudio();
+}
+
+function recordingUrlForInterval(interval) {
+  if (!state.project || !interval?.recording_filename) return '';
+  return `/media/${state.project.id}/recordings/${encodeURIComponent(interval.recording_filename)}`;
+}
+
+function ensureAdPreviewAudio(interval) {
+  const url = recordingUrlForInterval(interval);
+  if (!url) return null;
+  const key = Number(interval.index);
+  let audio = state.adPreviewAudios.get(key);
+  if (!audio || audio.dataset.source !== url) {
+    if (audio) audio.pause();
+    audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.dataset.source = url;
+    state.adPreviewAudios.set(key, audio);
+  }
+  return audio;
+}
+
+function stopAdPreviewAudio(reset = true) {
+  if (state.adPreviewAnimation) {
+    cancelAnimationFrame(state.adPreviewAnimation);
+    state.adPreviewAnimation = null;
+  }
+  state.adPreviewAudios.forEach(audio => {
+    audio.pause();
+    if (reset) {
+      try { audio.currentTime = 0; } catch (_) { /* ignora se o navegador ainda nao carregou metadados */ }
+    }
+  });
+}
+
+function syncAdPreviewToVideo() {
+  const video = els.videoPlayer;
+  if (!state.project || !state.adPreviewEnabled || !video || video.paused || video.ended) {
+    stopAdPreviewAudio(false);
+    return;
+  }
+  const now = Number(video.currentTime || 0);
+  const playbackRate = Number(video.playbackRate || 1);
+  const activeKeys = new Set();
+  (state.project.intervals || []).forEach(interval => {
+    if (!interval.recording_filename) return;
+    const start = Number(interval.start || 0);
+    const recordedLength = Number(interval.recording_duration || interval.duration || 0);
+    const end = start + Math.max(0.1, recordedLength);
+    const nearStart = start - 0.08;
+    const nearEnd = end + 0.18;
+    const key = Number(interval.index);
+    if (now >= nearStart && now <= nearEnd) {
+      const audio = ensureAdPreviewAudio(interval);
+      if (!audio) return;
+      activeKeys.add(key);
+      const targetTime = Math.max(0, now - start);
+      if (Math.abs(Number(audio.currentTime || 0) - targetTime) > 0.18) {
+        try { audio.currentTime = targetTime; } catch (_) { /* aguarda o audio carregar */ }
+      }
+      audio.playbackRate = playbackRate;
+      audio.volume = video.volume;
+      audio.muted = video.muted;
+      if (audio.paused) {
+        audio.play().catch(() => {
+          showToast('O navegador bloqueou a audiodescricao sincronizada. Clique no player e tente de novo.');
+        });
+      }
+      return;
+    }
+    const audio = state.adPreviewAudios.get(key);
+    if (audio && !audio.paused) {
+      audio.pause();
+      try { audio.currentTime = 0; } catch (_) { /* ignora */ }
+    }
+  });
+  state.adPreviewAudios.forEach((audio, key) => {
+    if (!activeKeys.has(key) && !audio.paused) audio.pause();
+  });
+}
+
+function startAdPreviewSync() {
+  if (state.adPreviewAnimation) return;
+  const tick = () => {
+    syncAdPreviewToVideo();
+    if (els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended) {
+      state.adPreviewAnimation = requestAnimationFrame(tick);
+    } else {
+      state.adPreviewAnimation = null;
+    }
+  };
+  state.adPreviewAnimation = requestAnimationFrame(tick);
 }
 
 function waitForSeek(video, start) {
@@ -1428,6 +1537,7 @@ async function setVideoTime(interval, shouldPlay, includePreviewMargin = false, 
   if (shouldPlay) {
     try {
       await video.play();
+      startAdPreviewSync();
     } catch (_) {
       showToast('Clique no player para iniciar o trecho.');
     }
@@ -1694,6 +1804,7 @@ async function playSegment(interval) {
   video.addEventListener('timeupdate', onTimeUpdate);
   try {
     await video.play();
+    startAdPreviewSync();
   } catch (_) {
     showToast('Clique no player para iniciar o trecho.');
   }
@@ -1770,6 +1881,31 @@ function intervalReasonText(info) {
   return 'A pausa foi encontrada, mas ainda falta checar fala/transcrição.';
 }
 
+function syncTimeFieldsFromBounds(card) {
+  const startInput = card.querySelector('.start-input');
+  const endInput = card.querySelector('.end-input');
+  const durationInput = card.querySelector('.duration-input');
+  if (!startInput || !endInput || !durationInput) return;
+  const start = parseIntervalTimeField(startInput.value, 0);
+  const end = parseIntervalTimeField(endInput.value, start);
+  durationInput.value = Math.max(0.1, end - start).toFixed(3);
+}
+
+function syncEndFieldFromDuration(card) {
+  const startInput = card.querySelector('.start-input');
+  const endInput = card.querySelector('.end-input');
+  const durationInput = card.querySelector('.duration-input');
+  if (!startInput || !endInput || !durationInput) return;
+  const start = parseIntervalTimeField(startInput.value, 0);
+  const duration = Math.max(0.1, parseIntervalTimeField(durationInput.value, 0.1));
+  endInput.value = (start + duration).toFixed(3);
+}
+
+function markTimingChanged(index, card) {
+  card.dataset.timingChanged = 'true';
+  scheduleIntervalSave(index, card, 400);
+}
+
 function intervalRowHtml(interval) {
   const info = audioSeparationForInterval(interval);
   const selected = Number(interval.index) === Number(state.selectedIntervalIndex || state.currentIntervalIndex);
@@ -1794,7 +1930,10 @@ function intervalDetailHtml(project, interval) {
   const info = audioSeparationForInterval(interval);
   const badgeClass = interval.quality || 'curto';
   const recordingAudio = interval.recording_filename
-    ? `<audio class="recording-preview" controls src="/media/${project.id}/recordings/${encodeURIComponent(interval.recording_filename)}"></audio>`
+    ? `<div class="recording-preview-wrap">
+        <audio class="recording-preview" controls title="Ao tocar esta gravacao, o video tambem toca no tempo certo para simular o resultado final." src="/media/${project.id}/recordings/${encodeURIComponent(interval.recording_filename)}"></audio>
+        <p class="hint ad-preview-hint">Ao dar play na gravacao ou no video, a narracao entra no tempo deste intervalo para voce testar como vai ficar.</p>
+      </div>`
     : '<p class="hint">Nenhuma gravação enviada ainda.</p>';
   const warning = interval.warning ? `<div class="interval-warning">${escapeHtml(interval.warning)}</div>` : '';
   const title = interval.title || `Audiodescrição ${interval.index}`;
@@ -1831,6 +1970,21 @@ function intervalDetailHtml(project, interval) {
               ${['pendente','roteirizado','gravado','revisado','descartado'].map(s => `<option value="${s}" ${interval.status === s ? 'selected' : ''}>${statusLabel(s)}</option>`).join('')}
             </select>
           </label>
+        </div>
+        <div class="time-edit-grid" title="Ajuste fino do comeco e do fim desta pausa. Aceita segundos ou formato 00:00:12.500.">
+          <label>Inicio do intervalo
+            <input class="input start-input" value="${Number(interval.start || 0).toFixed(3)}" placeholder="00:00:00.000" inputmode="decimal">
+          </label>
+          <label>Fim do intervalo
+            <input class="input end-input" value="${Number(interval.end || 0).toFixed(3)}" placeholder="00:00:03.000" inputmode="decimal">
+          </label>
+          <label>Duracao
+            <input class="input duration-input" value="${Number(interval.duration || 0).toFixed(3)}" placeholder="3.0" inputmode="decimal">
+          </label>
+        </div>
+        <div class="time-edit-actions">
+          <button class="button" type="button" data-action="set-start-current" title="Usa o tempo atual do video como inicio deste intervalo">Usar tempo atual como inicio</button>
+          <button class="button" type="button" data-action="set-end-current" title="Usa o tempo atual do video como fim deste intervalo">Usar tempo atual como fim</button>
         </div>
         <label>Roteiro da audiodescrição
           <textarea class="textarea script-input" rows="4" placeholder="Escreva aqui o que será narrado nesse intervalo...">${escapeHtml(interval.script || '')}</textarea>
@@ -1873,10 +2027,56 @@ function bindIntervalDetail(interval) {
   card.querySelector('[data-action="record"]')?.addEventListener('click', (ev) => toggleRecording(interval.index, ev.currentTarget));
   card.querySelector('[data-action="delete-recording"]')?.addEventListener('click', () => deleteRecording(interval.index));
   card.querySelector('[data-action="delete-interval"]')?.addEventListener('click', () => deleteInterval(interval.index));
+  card.querySelector('[data-action="set-start-current"]')?.addEventListener('click', () => {
+    const input = card.querySelector('.start-input');
+    if (input) input.value = Number(els.videoPlayer.currentTime || 0).toFixed(3);
+    syncTimeFieldsFromBounds(card);
+    markTimingChanged(interval.index, card);
+  });
+  card.querySelector('[data-action="set-end-current"]')?.addEventListener('click', () => {
+    const input = card.querySelector('.end-input');
+    if (input) input.value = Number(els.videoPlayer.currentTime || 0).toFixed(3);
+    syncTimeFieldsFromBounds(card);
+    markTimingChanged(interval.index, card);
+  });
+  card.querySelector('.recording-preview')?.addEventListener('play', (event) => {
+    const audio = event.currentTarget;
+    if (audio.dataset.syncPreview === 'true') return;
+    audio.dataset.syncPreview = 'true';
+    audio.pause();
+    try { audio.currentTime = 0; } catch (_) { /* ignora */ }
+    setTimeout(() => { audio.dataset.syncPreview = ''; }, 200);
+    playSegment(interval);
+    showToast('Previa sincronizada: video e audiodescricao juntos.');
+  });
+  const startInput = card.querySelector('.start-input');
+  const endInput = card.querySelector('.end-input');
+  const durationInput = card.querySelector('.duration-input');
+  [startInput, endInput].filter(Boolean).forEach(input => {
+    input.addEventListener('change', () => {
+      syncTimeFieldsFromBounds(card);
+      markTimingChanged(interval.index, card);
+    });
+    input.addEventListener('input', () => {
+      if (parseTimeToSeconds(input.value) !== null) syncTimeFieldsFromBounds(card);
+      card.dataset.timingChanged = 'true';
+      scheduleIntervalSave(interval.index, card, 1200);
+    });
+  });
+  durationInput?.addEventListener('change', () => {
+    syncEndFieldFromDuration(card);
+    markTimingChanged(interval.index, card);
+  });
+  durationInput?.addEventListener('input', () => {
+    if (parseTimeToSeconds(durationInput.value) !== null) syncEndFieldFromDuration(card);
+    card.dataset.timingChanged = 'true';
+    scheduleIntervalSave(interval.index, card, 1200);
+  });
   card.querySelectorAll('.title-input, .status-input, .script-input, .notes-input').forEach(input => {
     input.addEventListener('input', () => scheduleIntervalSave(interval.index, card));
     input.addEventListener('change', () => scheduleIntervalSave(interval.index, card, 250));
   });
+  applyTooltips(card);
 }
 
 function renderIntervals() {
@@ -1945,11 +2145,17 @@ function renderIntervals() {
   bindIntervalDetail(selected);
 }
 function intervalPayloadFromCard(card) {
+  const start = parseIntervalTimeField(card.querySelector('.start-input')?.value, 0);
+  const end = parseIntervalTimeField(card.querySelector('.end-input')?.value, start + 0.1);
+  const duration = Math.max(0.1, parseIntervalTimeField(card.querySelector('.duration-input')?.value, end - start));
   return {
     title: card.querySelector('.title-input').value,
     status: card.querySelector('.status-input').value,
     script: card.querySelector('.script-input').value,
     notes: card.querySelector('.notes-input').value,
+    start,
+    end,
+    duration,
   };
 }
 
@@ -1970,6 +2176,7 @@ function scheduleIntervalSave(index, card, delay = 900) {
 async function saveInterval(index, card, options = {}) {
   if (!state.project) return;
   const body = intervalPayloadFromCard(card);
+  const timingChanged = card.dataset.timingChanged === 'true';
   setCardSaveState(card, 'Salvando...', 'saving');
   try {
     const res = await api(`/api/projects/${state.project.id}/intervals/${index}`, {
@@ -1977,12 +2184,17 @@ async function saveInterval(index, card, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    const updatedIndex = Number(res.interval?.index || index);
     state.project = res.project;
+    state.currentIntervalIndex = updatedIndex;
+    state.selectedIntervalIndex = updatedIndex;
     updateWorkflowPanel();
     setCardSaveState(card, `Salvo às ${new Date().toLocaleTimeString()}`, 'saved');
-    if (!options.silent) {
+    card.dataset.timingChanged = '';
+    if (timingChanged || !options.silent) {
       setProject(res.project);
-      showToast('Intervalo salvo.');
+      showIntervalPage(updatedIndex, false);
+      if (!options.silent) showToast('Intervalo salvo.');
     }
   } catch (err) {
     setCardSaveState(card, 'Erro ao salvar', 'error');
@@ -2337,11 +2549,24 @@ function bindEvents() {
   els.statusFilter.addEventListener('change', () => { state.intervalPage = 1; renderIntervals(); });
   els.videoPlayer.addEventListener('seeking', () => {
     if (state.segmentPreviewStopper) clearSegmentPreviewStopper();
+    stopAdPreviewAudio();
   });
-  els.videoPlayer.addEventListener('timeupdate', updateTimelineProgress);
+  els.videoPlayer.addEventListener('seeked', () => {
+    updateTimelineProgress();
+    if (!els.videoPlayer.paused) startAdPreviewSync();
+  });
+  els.videoPlayer.addEventListener('play', startAdPreviewSync);
+  els.videoPlayer.addEventListener('pause', () => stopAdPreviewAudio(false));
+  els.videoPlayer.addEventListener('ended', () => stopAdPreviewAudio());
+  els.videoPlayer.addEventListener('volumechange', syncAdPreviewToVideo);
+  els.videoPlayer.addEventListener('timeupdate', () => {
+    updateTimelineProgress();
+    syncAdPreviewToVideo();
+  });
   els.videoPlayer.addEventListener('loadedmetadata', renderTimeline);
   els.playbackSpeed?.addEventListener('change', () => {
     els.videoPlayer.playbackRate = Number(els.playbackSpeed.value || 1);
+    syncAdPreviewToVideo();
     showToast(`Velocidade do vídeo: ${els.playbackSpeed.value}x.`);
   });
   els.dismissErrorBtn.addEventListener('click', hideError);

@@ -947,6 +947,25 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 }
 .recording-preview { margin-top: 10px; width: 100%; }
 .status-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.time-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.time-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.recording-preview-wrap {
+  display: grid;
+  gap: 6px;
+}
+.ad-preview-hint {
+  margin: 0;
+}
 
 .workflow-panel {
   display: grid;
@@ -1223,6 +1242,7 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   }
   .form-grid,
   .status-row,
+  .time-edit-grid,
   .transcript-tools,
   .speech-context-grid,
   .audio-summary-grid {
