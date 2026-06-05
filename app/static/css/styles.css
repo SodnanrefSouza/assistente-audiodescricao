@@ -105,9 +105,9 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   border-color: #fff;
 }
 
-.layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0,1fr); gap: 22px; padding: 24px; }
+.layout { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0,1fr); gap: 18px; padding: 18px; }
 .sidebar { display: flex; flex-direction: column; gap: 18px; }
-.workspace { display: flex; flex-direction: column; gap: 18px; }
+.workspace { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
 .panel h2 { margin: 0 0 14px; font-size: 20px; letter-spacing: 0; }
 .panel h3 { margin: 0 0 6px; }
@@ -726,6 +726,11 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   text-align: center;
   transition: transform .1s ease, box-shadow .1s ease, background .1s ease;
 }
+.button.small {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
 .button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(23,32,51,0.12); }
 .button:disabled { opacity: 0.55; cursor: not-allowed; }
 .button.primary { background: var(--primary); color: white; border-color: var(--primary); }
@@ -822,9 +827,10 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 .intervals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 16px; }
 .interval-workbench {
   display: grid;
-  grid-template-columns: minmax(320px, 0.82fr) minmax(380px, 1.18fr);
+  grid-template-columns: minmax(min(100%, 320px), 0.78fr) minmax(0, 1.22fr);
   gap: 16px;
   align-items: start;
+  min-width: 0;
 }
 .interval-list-panel,
 .interval-detail-card {
@@ -852,7 +858,7 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 }
 .interval-row {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(130px, 0.85fr) minmax(120px, 0.75fr) minmax(96px, auto);
   gap: 6px;
   align-items: center;
   width: 100%;
@@ -914,6 +920,7 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
   top: 14px;
   max-height: calc(100vh - 28px);
   overflow: auto;
+  min-width: 0;
 }
 .interval-detail-card.clear { background: #f8fffb; }
 .interval-detail-card.caution { background: #fffdf7; }
@@ -985,12 +992,17 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 
 .workflow-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(240px, auto);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
 }
 .workflow-copy h2 { margin-bottom: 6px; }
 .workflow-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.video-nav-actions {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
 .workflow-stats {
   grid-column: 1 / -1;
   display: flex;
@@ -1213,6 +1225,28 @@ button, input, textarea, select, label, p, h1, h2, h3, small, strong, span, div 
 @keyframes spin { to { transform: rotate(360deg); } }
 
 code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
+
+@media (max-width: 1440px) {
+  .layout {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 14px;
+    padding: 14px;
+  }
+  .interval-workbench {
+    grid-template-columns: 1fr;
+  }
+  .interval-detail-card {
+    position: static;
+    max-height: none;
+  }
+  .interval-row {
+    grid-template-columns: minmax(160px, 1fr) minmax(130px, auto);
+  }
+  .interval-row-chips {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
 
 @media (max-width: 1050px) {
   .layout { grid-template-columns: 1fr; }

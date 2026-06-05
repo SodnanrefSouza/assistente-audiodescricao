@@ -657,7 +657,7 @@ function updateVideoTimeReadout() {
   els.videoTimeReadout.textContent = `Tempo do vídeo: ${fmtClock(current)} / ${fmtClock(duration)}`;
 }
 
-function goToInterval(index, autoplay = true) {
+function goToInterval(index, autoplay = true, options = {}) {
   if (!state.project) return;
   const interval = (state.project.intervals || []).find(item => Number(item.index) === Number(index));
   if (!interval) return;
@@ -675,27 +675,47 @@ function goToInterval(index, autoplay = true) {
     detail.scrollIntoView({ behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth', block: 'center' });
     detail.focus({ preventScroll: true });
   }
-  if (autoplay) playSegment(interval);
+  if (autoplay) playSegment(interval, { withContext: !!options.withContext });
   updateWorkflowPanel();
   renderTimeline();
   renderAudioInsightPanel();
 }
+
+function intervalsByStart() {
+  return [...(state.project?.intervals || [])].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+}
+
 function findIntervalNearVideo(direction = 1) {
-  const intervals = state.project?.intervals || [];
+  const intervals = intervalsByStart();
   if (!intervals.length) return null;
+  const currentIndex = Number(state.currentIntervalIndex || 0);
+  const currentPosition = intervals.findIndex(interval => Number(interval.index) === currentIndex);
+  if (currentPosition >= 0) {
+    const target = intervals[currentPosition + direction];
+    return target || null;
+  }
   const time = Number(els.videoPlayer.currentTime || 0);
   if (direction > 0) {
-    return intervals.find(interval => Number(interval.start || 0) > time + 0.05) || intervals[0];
+    return intervals.find(interval => Number(interval.start || 0) > time + 0.2) || null;
   }
-  return [...intervals].reverse().find(interval => Number(interval.start || 0) < time - 0.05) || intervals[intervals.length - 1];
+  return [...intervals].reverse().find(interval => Number(interval.end || interval.start || 0) < time - 0.2) || null;
 }
 
 function goToNextPending() {
-  const intervals = state.project?.intervals || [];
-  const current = Number(state.currentIntervalIndex || 0);
-  const ordered = intervals.filter(interval => interval.status !== 'revisado' && interval.status !== 'descartado');
-  const next = ordered.find(interval => Number(interval.index) > current) || ordered[0];
-  if (next) goToInterval(next.index, true);
+  const intervals = intervalsByStart();
+  const pending = intervals.filter(interval => interval.status !== 'revisado' && interval.status !== 'descartado');
+  if (!pending.length) {
+    showToast('Não há pausa pendente para revisar.');
+    return;
+  }
+  const current = intervals.find(interval => Number(interval.index) === Number(state.currentIntervalIndex || 0));
+  const referenceTime = current ? Number(current.start || 0) : Number(els.videoPlayer.currentTime || 0);
+  const next = pending.find(interval => Number(interval.start || 0) > referenceTime + 0.2);
+  if (next) {
+    goToInterval(next.index, true);
+    return;
+  }
+  showToast('Não há próxima pausa pendente depois da atual.');
 }
 
 async function markCurrentReviewed() {
@@ -1489,9 +1509,10 @@ function scrollToTranscriptPanel() {
 
 function clearSegmentPreviewStopper() {
   if (!state.segmentPreviewStopper) return;
-  const { video, handler, fallback } = state.segmentPreviewStopper;
+  const { video, handler, fallback, timer } = state.segmentPreviewStopper;
   if (video && handler) video.removeEventListener('timeupdate', handler);
   if (fallback) clearTimeout(fallback);
+  if (timer) clearInterval(timer);
   state.segmentPreviewStopper = null;
   stopAdPreviewAudio();
 }
@@ -1862,26 +1883,31 @@ async function detectSilences() {
   setTimeout(() => setLoading(false), 450);
 }
 
-async function playSegment(interval) {
+async function playSegment(interval, options = {}) {
   clearSegmentPreviewStopper();
-  const margin = Number(els.previewMargin.value || 2);
+  const withContext = !!options.withContext;
+  const margin = withContext ? Number(els.previewMargin.value || 2) : 0;
   const video = els.videoPlayer;
   const start = Math.max(0, Number(interval.start || 0) - margin);
-  const stopAt = Number(interval.end || 0) + margin;
+  const rawEnd = Math.max(Number(interval.start || 0), Number(interval.end || interval.start || 0));
+  const stopAt = Math.max(start, rawEnd + margin);
   video.pause();
   await waitForSeek(video, start);
   scrollToVideoPanel();
-  const onTimeUpdate = () => {
-    if (video.currentTime >= stopAt) {
+  const stopPreview = () => {
+    if (video.currentTime >= stopAt - 0.015) {
       video.pause();
+      if (!withContext && Number.isFinite(stopAt)) video.currentTime = stopAt;
       clearSegmentPreviewStopper();
     }
   };
+  const onTimeUpdate = stopPreview;
+  const timer = setInterval(stopPreview, 60);
   const fallback = setTimeout(() => {
     if (!video.paused) video.pause();
     clearSegmentPreviewStopper();
   }, Math.max(1000, (stopAt - start + 0.4) * 1000));
-  state.segmentPreviewStopper = { video, handler: onTimeUpdate, fallback };
+  state.segmentPreviewStopper = { video, handler: onTimeUpdate, fallback, timer };
   video.addEventListener('timeupdate', onTimeUpdate);
   try {
     await video.play();
@@ -2101,7 +2127,7 @@ function bindIntervalDetail(interval) {
   const card = document.getElementById(`interval-${interval.index}`);
   if (!card) return;
   enforceInputLimits(card);
-  card.querySelector('[data-action="play"]')?.addEventListener('click', () => playSegment(interval));
+  card.querySelector('[data-action="play"]')?.addEventListener('click', () => playSegment(interval, { withContext: true }));
   card.querySelector('[data-action="jump"]')?.addEventListener('click', () => jumpToStart(interval));
   card.querySelector('[data-action="position"]')?.addEventListener('click', () => positionAtStart(interval));
   card.querySelector('[data-action="mark-current"]')?.addEventListener('click', () => goToInterval(interval.index, false));
@@ -2639,11 +2665,13 @@ function bindEvents() {
   els.prevPauseBtn.addEventListener('click', () => {
     const interval = findIntervalNearVideo(-1);
     if (interval) goToInterval(interval.index, true);
+    else showToast('Não há pausa anterior.');
   });
   els.nextPendingBtn.addEventListener('click', goToNextPending);
   els.nextPauseBtn.addEventListener('click', () => {
     const interval = findIntervalNearVideo(1);
     if (interval) goToInterval(interval.index, true);
+    else showToast('Não há próxima pausa.');
   });
   els.addIntervalAtCurrentBtn?.addEventListener('click', addIntervalAtCurrentTime);
   els.addIntervalListBtn?.addEventListener('click', addIntervalAtCurrentTime);

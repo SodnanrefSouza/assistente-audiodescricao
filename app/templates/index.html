@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260603-menu-time">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260605-responsive-nav">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -145,12 +145,6 @@
           <h2 id="workflowTitle">Próximo passo</h2>
           <p id="workflowHint" class="muted">Abra um projeto para ver o andamento da audiodescrição.</p>
         </div>
-        <div class="workflow-actions">
-          <button class="button" id="prevPauseBtn" disabled>Pausa anterior</button>
-          <button class="button primary" id="nextPendingBtn" disabled>Próxima pendente</button>
-          <button class="button" id="nextPauseBtn" disabled>Próxima pausa</button>
-          <button class="button success" id="markReviewedBtn" disabled>Marcar revisado</button>
-        </div>
         <div id="workflowStats" class="workflow-stats" aria-live="polite"></div>
       </section>
 
@@ -186,6 +180,12 @@
               </select>
             </label>
             <button class="button" id="addIntervalAtCurrentBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">+ Adicionar intervalo aqui</button>
+          </div>
+          <div class="workflow-actions video-nav-actions" aria-label="Navegação rápida entre pausas">
+            <button class="button small" id="prevPauseBtn" disabled title="Vai para a pausa anterior e toca somente o intervalo dela">Pausa anterior</button>
+            <button class="button small primary" id="nextPendingBtn" disabled title="Vai para a próxima pausa pendente e para antes da próxima fala">Próxima pendente</button>
+            <button class="button small" id="nextPauseBtn" disabled title="Vai para a próxima pausa e toca somente esse intervalo">Próxima pausa</button>
+            <button class="button small success" id="markReviewedBtn" disabled title="Marca a pausa atual como revisada">Marcar revisado</button>
           </div>
           <div class="timeline-panel" aria-label="Linha do tempo das pausas">
             <div class="timeline-header">
@@ -301,6 +301,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260603-menu-time"></script>
+  <script src="/static/js/app.js?v=20260605-responsive-nav"></script>
 </body>
 </html>
