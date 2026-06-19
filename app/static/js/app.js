@@ -57,6 +57,10 @@ const els = {
   selectedFileName: $('selectedFileName'),
   uploadBtn: $('uploadBtn'),
   projectList: $('projectList'),
+  startStage: $('startStage'),
+  projectHeader: $('projectHeader'),
+  workflowPanel: $('workflowPanel'),
+  reviewStage: $('reviewStage'),
   currentTitle: $('currentTitle'),
   currentMeta: $('currentMeta'),
   deleteProjectBtn: $('deleteProjectBtn'),
@@ -77,8 +81,10 @@ const els = {
   segmentEndMarker: $('segmentEndMarker'),
   playbackSpeed: $('playbackSpeed'),
   timelineTrack: $('timelineTrack'),
+  timelinePanel: $('timelinePanel'),
   timelineStatus: $('timelineStatus'),
   audioInsightPanel: $('audioInsightPanel'),
+  videoNavActions: $('videoNavActions'),
   back2Btn: $('back2Btn'),
   playPauseBtn: $('playPauseBtn'),
   forward2Btn: $('forward2Btn'),
@@ -91,8 +97,11 @@ const els = {
   paddingEnd: $('paddingEnd'),
   detectBtn: $('detectBtn'),
   detectSummary: $('detectSummary'),
+  settingsMenu: $('settingsMenu'),
+  exportMenu: $('exportMenu'),
   exportButtons: Array.from(document.querySelectorAll('[data-export]')),
   intervalsContainer: $('intervalsContainer'),
+  intervalsPanel: $('intervalsPanel'),
   intervalPager: $('intervalPager'),
   searchIntervals: $('searchIntervals'),
   statusFilter: $('statusFilter'),
@@ -328,7 +337,7 @@ function hideError() {
 }
 
 function setBusyButtons(active) {
-  els.uploadBtn.disabled = !!active;
+  els.uploadBtn.disabled = !!active || !els.videoFile.files?.[0];
   if (state.project) els.detectBtn.disabled = !!active;
 }
 
@@ -467,6 +476,45 @@ function updateTranscriptStatus(job = null) {
     : 'A transcrição automática precisa do faster-whisper instalado no ambiente do app.';
 }
 
+function transcriptUiState(job = null) {
+  if (!state.project) return 'none';
+  if (job?.status === 'running') return 'running';
+  const transcript = state.project.transcript || {};
+  if ((transcript.text || '').trim()) return 'done';
+  return transcript.status || 'empty';
+}
+
+function updateStageVisibility(job = null) {
+  const hasProject = !!state.project;
+  const hasIntervals = !!state.project?.intervals?.length;
+  const transcriptState = transcriptUiState(job);
+  const canDetect = hasProject && ['done', 'error'].includes(transcriptState);
+
+  if (els.startStage) els.startStage.hidden = hasProject;
+  if (els.projectHeader) els.projectHeader.hidden = !hasProject;
+  if (els.workflowPanel) els.workflowPanel.hidden = !hasProject;
+  if (els.reviewStage) els.reviewStage.hidden = !hasProject;
+  if (els.timelinePanel) els.timelinePanel.hidden = !hasIntervals;
+  if (els.videoNavActions) els.videoNavActions.hidden = !hasIntervals;
+  if (els.audioInsightPanel) els.audioInsightPanel.hidden = !hasIntervals;
+  if (els.intervalsPanel) els.intervalsPanel.hidden = !hasIntervals;
+  if (els.exportMenu) {
+    els.exportMenu.hidden = !hasIntervals;
+    if (!hasIntervals) els.exportMenu.removeAttribute('open');
+  }
+  if (els.settingsMenu) {
+    els.settingsMenu.hidden = !hasProject;
+    if (!hasProject) els.settingsMenu.removeAttribute('open');
+  }
+  if (els.detectBtn) {
+    els.detectBtn.hidden = !canDetect;
+    els.detectBtn.disabled = !canDetect;
+    els.detectBtn.textContent = transcriptState === 'error'
+      ? 'Tentar checagem e detectar pausas'
+      : 'Detectar pausas entre falas';
+  }
+}
+
 async function pollTranscriptJob(jobId) {
   if (!jobId) return;
   state.activeTranscriptJob = jobId;
@@ -475,6 +523,8 @@ async function pollTranscriptJob(jobId) {
       const res = await api(`/api/jobs/${jobId}`);
       const job = res.job;
       updateTranscriptStatus(job);
+      updateStageVisibility(job);
+      updateWorkflowPanel(job);
       if (job.status === 'done') {
         state.activeTranscriptJob = null;
         if (job.result?.project) {
@@ -791,6 +841,7 @@ function setProject(project) {
   els.paddingStart.value = s.padding_start ?? 0.25;
   els.paddingEnd.value = s.padding_end ?? 0.25;
   els.exportButtons.forEach(btn => btn.disabled = false);
+  updateStageVisibility();
   updateWorkflowPanel();
   updateTranscriptStatus();
   renderTranscriptPreview();
@@ -842,6 +893,7 @@ function clearProject() {
     els.historyList.className = 'history-list empty';
     els.historyList.textContent = 'Abra um projeto para ver o histórico.';
   }
+  updateStageVisibility();
   updateWorkflowPanel();
   renderTimeline();
   renderAudioInsightPanel();
@@ -863,10 +915,11 @@ function projectStats() {
   };
 }
 
-function updateWorkflowPanel() {
+function updateWorkflowPanel(job = null) {
   const stats = projectStats();
   const hasProject = !!state.project;
   const hasIntervals = stats.total > 0;
+  const transcriptState = transcriptUiState(job);
   els.prevPauseBtn.disabled = !hasIntervals;
   els.nextPendingBtn.disabled = !hasIntervals;
   els.nextPauseBtn.disabled = !hasIntervals;
@@ -879,8 +932,20 @@ function updateWorkflowPanel() {
     return;
   }
   if (!hasIntervals) {
-    els.workflowTitle.textContent = 'Detecte as pausas';
-    els.workflowHint.textContent = 'Use a detecção automática para criar os intervalos de audiodescrição.';
+    if (transcriptState === 'running') {
+      const percent = Math.round(Number(job?.percent || 0));
+      els.workflowTitle.textContent = 'Checando as falas do vídeo';
+      els.workflowHint.textContent = `${percent ? `${percent}% concluído. ` : ''}Aguarde esta etapa terminar. O botão “Detectar pausas entre falas” aparecerá em seguida.`;
+    } else if (transcriptState === 'error') {
+      els.workflowTitle.textContent = 'A checagem de fala precisa ser repetida';
+      els.workflowHint.textContent = 'Use “Tentar checagem e detectar pausas”. O app só cria pausas depois de localizar as falas.';
+    } else if (transcriptState === 'done') {
+      els.workflowTitle.textContent = 'Checagem de fala pronta';
+      els.workflowHint.textContent = 'Clique em “Detectar pausas entre falas” no topo do projeto para criar a timeline e a fila de revisão.';
+    } else {
+      els.workflowTitle.textContent = 'Preparando a checagem de fala';
+      els.workflowHint.textContent = 'A análise começa automaticamente depois que o vídeo é carregado.';
+    }
     els.workflowStats.innerHTML = `<span>${fmtClock(state.project.duration || 0)} de vídeo</span>`;
     return;
   }
@@ -1688,6 +1753,7 @@ function updateSelectedFileName() {
   els.selectedFileName.textContent = file
     ? `${file.name} • ${fmtBytes(file.size)}`
     : 'Nenhum vídeo selecionado.';
+  els.uploadBtn.disabled = !!validateVideoFile(file);
 }
 
 function postChunkWithProgress(uploadId, chunkIndex, totalChunks, chunk, fileSize, uploadedBefore) {
@@ -2716,6 +2782,8 @@ async function init() {
   applyTooltips();
   enforceInputLimits();
   bindEvents();
+  updateStageVisibility();
+  updateWorkflowPanel();
   updateVideoTimeReadout();
   await checkHealth();
   await loadProjects();

@@ -48,11 +48,19 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260605-responsive-nav",
+            "20260618-progressive",
             "Detectar pausas entre falas",
             "Ajustes de detecção",
             "Exportar ▾",
             "Ver checklist",
+            'id="startStage"',
+            'id="projectHeader" hidden',
+            'id="workflowPanel" aria-labelledby="workflowTitle" hidden',
+            'id="reviewStage" hidden',
+            'id="timelinePanel" aria-label="Linha do tempo das pausas" hidden',
+            'id="videoNavActions" aria-label="Navegação rápida entre pausas" hidden',
+            'id="intervalsPanel" hidden',
+            'id="exportMenu" hidden',
             'data-number-field data-min="-80"',
             'maxlength="80"',
         ):
@@ -79,6 +87,8 @@ class SmokeTest(unittest.TestCase):
             "function setupTopMenus",
             "function updateVideoTimeReadout",
             "function intervalsByStart",
+            "function transcriptUiState",
+            "function updateStageVisibility",
             "function updateSelectedSegmentBar",
             "function speechContextHtml",
             "function timelineDetailRulerHtml",
@@ -114,6 +124,7 @@ class SmokeTest(unittest.TestCase):
             ".video-time-readout",
             ".video-nav-actions",
             ".button.small",
+            ".start-stage",
             ".selected-segment-bar",
             ".speech-context",
             ".timeline-detail-ruler",
@@ -136,6 +147,14 @@ class SmokeTest(unittest.TestCase):
         content = launcher.read_text(encoding="utf-8")
         self.assertIn(".venv\\Scripts\\python.exe", content)
         self.assertIn("run.py", content)
+
+    def test_windows_build_collects_whisper_assets(self) -> None:
+        script = (ROOT / "build_windows.ps1").read_text(encoding="utf-8")
+        self.assertIn('"--collect-data", "faster_whisper"', script)
+        self.assertIn('"--collect-binaries", "ctranslate2"', script)
+        self.assertIn('"--collect-binaries", "onnxruntime"', script)
+        self.assertIn("AssistenteAudioDescricao_portatil.zip", script)
+        self.assertIn('Get-Process "AssistenteAudioDescricao"', script)
 
     def test_project_delete_removes_project_folder(self) -> None:
         store = ProjectStore(Path(os.environ["AD_ASSIST_DATA_DIR"]))

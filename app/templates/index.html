@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260605-responsive-nav">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260618-progressive">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -50,18 +50,18 @@
           <label class="file-button" for="videoFile">Escolher vídeo</label>
           <div class="file-name" id="selectedFileName" aria-live="polite">Nenhum vídeo selecionado.</div>
         </div>
-        <button class="button primary" id="uploadBtn">Criar projeto</button>
+        <button class="button primary" id="uploadBtn" disabled>Criar projeto</button>
         <p class="hint">Tudo roda localmente no seu computador. Vídeos grandes são enviados em partes e ficam salvos em <code>data/projects</code>. O limite real depende do espaço em disco.</p>
       </section>
 
       <section class="panel help-panel" title="Resumo do fluxo principal da ferramenta. Use como guia rápido quando estiver perdido.">
         <h2>Como usar</h2>
         <ol>
-          <li>Envie um vídeo.</li>
-          <li>Clique em detectar pausas.</li>
-          <li>Revise cada intervalo no player.</li>
-          <li>Escreva ou grave a descrição.</li>
-          <li>Exporte roteiro, CSV, áudio ou vídeo final.</li>
+          <li>Escolha um vídeo e clique em <strong>Criar projeto</strong>, ou abra um projeto recente.</li>
+          <li>Aguarde a <strong>checagem de fala</strong> automática terminar.</li>
+          <li>Clique em <strong>Detectar pausas entre falas</strong>.</li>
+          <li>Revise as pausas, escreva o roteiro e grave a audiodescrição.</li>
+          <li>Abra <strong>Exportar</strong> para gerar roteiro, áudio ou vídeo final.</li>
         </ol>
       </section>
 
@@ -72,15 +72,21 @@
     </aside>
 
     <section class="workspace" id="workspace">
-      <section class="panel project-header" id="projectHeader">
+      <section class="panel start-stage" id="startStage">
+        <p class="eyebrow">Primeira etapa</p>
+        <h2>Crie ou abra um projeto</h2>
+        <p>Escolha um vídeo em <strong>Novo projeto</strong> ou abra um item em <strong>Projetos recentes</strong>. As próximas ferramentas aparecem conforme ficarem disponíveis.</p>
+      </section>
+
+      <section class="panel project-header" id="projectHeader" hidden>
         <div>
           <p class="eyebrow">Projeto atual</p>
           <h2 id="currentTitle">Nenhum projeto aberto</h2>
           <p id="currentMeta" class="muted">Crie ou abra um projeto para começar.</p>
         </div>
         <div class="header-actions">
-          <button class="button primary" id="detectBtn" disabled title="Analisa a transcrição e cria pausas entre falas. O som de fundo entra depois como aviso.">Detectar pausas entre falas</button>
-          <details class="top-menu settings-menu">
+          <button class="button primary" id="detectBtn" hidden title="Analisa a transcrição e cria pausas entre falas. O som de fundo entra depois como aviso.">Detectar pausas entre falas</button>
+          <details class="top-menu settings-menu" id="settingsMenu">
             <summary class="button menu-summary" title="Abre os ajustes finos usados na detecção e na checagem do fundo">Ajustes de detecção ▾</summary>
             <div class="top-menu-popover settings-popover" aria-label="Ajustes de detecção">
               <div class="form-grid">
@@ -122,7 +128,7 @@
               <p id="detectSummary" class="hint"></p>
             </div>
           </details>
-          <details class="top-menu export-menu">
+          <details class="top-menu export-menu" id="exportMenu" hidden>
             <summary class="button menu-summary" title="Abre os arquivos que podem ser baixados deste projeto">Exportar ▾</summary>
             <div class="top-menu-popover export-actions" aria-label="Formatos de exportação">
               <button class="button" data-export="script" disabled title="Baixa um roteiro em Markdown para revisar ou entregar">Roteiro .md</button>
@@ -135,11 +141,11 @@
               <button class="button success" data-export="final_video" disabled title="Gera e baixa o vídeo final com a narração misturada">Vídeo final .mp4</button>
             </div>
           </details>
-          <button class="button ghost danger" id="deleteProjectBtn" disabled>Excluir projeto</button>
+          <button class="button ghost danger" id="deleteProjectBtn">Excluir projeto</button>
         </div>
       </section>
 
-      <section class="panel workflow-panel" aria-labelledby="workflowTitle">
+      <section class="panel workflow-panel" id="workflowPanel" aria-labelledby="workflowTitle" hidden>
         <div class="workflow-copy">
           <p class="eyebrow">Guia de edição</p>
           <h2 id="workflowTitle">Próximo passo</h2>
@@ -148,7 +154,7 @@
         <div id="workflowStats" class="workflow-stats" aria-live="polite"></div>
       </section>
 
-      <section class="grid-two">
+      <section class="grid-two" id="reviewStage" hidden>
         <section class="panel video-panel" id="videoPanel">
           <h2>Revisão do vídeo</h2>
           <video id="videoPlayer" class="video" controls preload="metadata"></video>
@@ -181,13 +187,13 @@
             </label>
             <button class="button" id="addIntervalAtCurrentBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">+ Adicionar intervalo aqui</button>
           </div>
-          <div class="workflow-actions video-nav-actions" aria-label="Navegação rápida entre pausas">
+          <div class="workflow-actions video-nav-actions" id="videoNavActions" aria-label="Navegação rápida entre pausas" hidden>
             <button class="button small" id="prevPauseBtn" disabled title="Vai para a pausa anterior e toca somente o intervalo dela">Pausa anterior</button>
             <button class="button small primary" id="nextPendingBtn" disabled title="Vai para a próxima pausa pendente e para antes da próxima fala">Próxima pendente</button>
             <button class="button small" id="nextPauseBtn" disabled title="Vai para a próxima pausa e toca somente esse intervalo">Próxima pausa</button>
             <button class="button small success" id="markReviewedBtn" disabled title="Marca a pausa atual como revisada">Marcar revisado</button>
           </div>
-          <div class="timeline-panel" aria-label="Linha do tempo das pausas">
+          <div class="timeline-panel" id="timelinePanel" aria-label="Linha do tempo das pausas" hidden>
             <div class="timeline-header">
               <strong>Linha do tempo das pausas</strong>
               <span id="timelineStatus" class="hint">Detecte as pausas para montar a linha do tempo.</span>
@@ -202,7 +208,7 @@
               <span><i class="legend-dot neutro"></i> cinza: aguardando checagem de fala</span>
             </div>
           </div>
-          <details id="audioInsightPanel" class="audio-insight-panel compact-panel" aria-live="polite">
+          <details id="audioInsightPanel" class="audio-insight-panel compact-panel" aria-live="polite" hidden>
             <summary title="Abre um resumo para decidir quais pausas revisar primeiro">
               <span>
                 <strong>Checklist antes de gravar</strong>
@@ -253,7 +259,7 @@
         </details>
       </section>
 
-      <section class="panel intervals-panel">
+      <section class="panel intervals-panel" id="intervalsPanel" hidden>
         <div class="intervals-header">
           <div>
             <h2>Intervalos encontrados</h2>
@@ -301,6 +307,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260605-responsive-nav"></script>
+  <script src="/static/js/app.js?v=20260618-progressive"></script>
 </body>
 </html>
