@@ -102,6 +102,8 @@ const els = {
   exportButtons: Array.from(document.querySelectorAll('[data-export]')),
   intervalsContainer: $('intervalsContainer'),
   intervalsPanel: $('intervalsPanel'),
+  intervalsSummaryText: $('intervalsSummaryText'),
+  intervalsSummaryAction: $('intervalsSummaryAction'),
   intervalPager: $('intervalPager'),
   searchIntervals: $('searchIntervals'),
   statusFilter: $('statusFilter'),
@@ -675,6 +677,35 @@ function showIntervalPage(index, clearFilters = false) {
   return !!page;
 }
 
+function updateIntervalsDisclosure() {
+  if (!els.intervalsPanel) return;
+  const count = state.project?.intervals?.length || 0;
+  const isOpen = els.intervalsPanel.open;
+  if (els.intervalsSummaryText) {
+    els.intervalsSummaryText.textContent = count
+      ? `${count} pausa(s). ${isOpen ? 'Escolha uma pausa para revisar os detalhes.' : 'Abra quando quiser consultar ou editar a fila.'}`
+      : 'A lista aparecerá depois que as pausas forem detectadas.';
+  }
+  if (els.intervalsSummaryAction) {
+    els.intervalsSummaryAction.textContent = isOpen ? 'Ocultar pausas ▴' : 'Ver pausas ▾';
+  }
+}
+
+function setIntervalsPanelOpen(open, options = {}) {
+  if (!els.intervalsPanel) return;
+  if (open) els.intervalsPanel.setAttribute('open', '');
+  else els.intervalsPanel.removeAttribute('open');
+  updateIntervalsDisclosure();
+  if (open && options.scroll) {
+    requestAnimationFrame(() => {
+      els.intervalsPanel.scrollIntoView({
+        behavior: state.visualPrefs.reducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+  }
+}
+
 function updateSelectedSegmentBar(interval) {
   if (!els.selectedSegmentBar) return;
   const selected = interval === undefined
@@ -713,6 +744,7 @@ function goToInterval(index, autoplay = true, options = {}) {
   if (!interval) return;
   state.currentIntervalIndex = interval.index;
   state.selectedIntervalIndex = interval.index;
+  setIntervalsPanelOpen(true);
   updateSelectedSegmentBar(interval);
   const visible = visibleIntervalIndexes();
   if (!visible.includes(Number(index))) {
@@ -808,7 +840,9 @@ async function openProject(projectId) {
 function setProject(project) {
   stopAdPreviewAudio();
   state.adPreviewAudios.clear();
+  const projectChanged = state.project?.id !== project?.id;
   state.project = project;
+  if (projectChanged) setIntervalsPanelOpen(false);
   const savedCurrent = project.workflow?.current_interval || null;
   const hasSavedCurrent = (project.intervals || []).some(interval => Number(interval.index) === Number(savedCurrent));
   state.currentIntervalIndex = hasSavedCurrent ? savedCurrent : project.intervals?.[0]?.index || null;
@@ -850,6 +884,7 @@ function setProject(project) {
   renderTimeline();
   renderAudioInsightPanel();
   renderIntervals();
+  updateIntervalsDisclosure();
   if (els.historyList) loadHistory();
 }
 
@@ -862,6 +897,7 @@ function clearProject() {
   state.timelineSelectedGroupIndex = null;
   state.intervalPage = 1;
   state.transcriptSegments = [];
+  setIntervalsPanelOpen(false);
   els.currentTitle.textContent = 'Nenhum projeto aberto';
   els.currentMeta.textContent = 'Crie ou abra um projeto para começar.';
   els.videoPlayer.removeAttribute('src');
@@ -1456,6 +1492,7 @@ async function openIntervalFromTimelinePause(index) {
   if (!interval) return;
   state.currentIntervalIndex = interval.index;
   state.selectedIntervalIndex = interval.index;
+  setIntervalsPanelOpen(true);
   updateSelectedSegmentBar(interval);
   showIntervalPage(index, true);
   renderTimeline();
@@ -2257,6 +2294,7 @@ function renderIntervals() {
   const project = state.project;
   const intervals = project?.intervals || [];
   const filtered = filteredIntervalList();
+  updateIntervalsDisclosure();
 
   if (!project) {
     if (els.intervalPager) els.intervalPager.hidden = true;
@@ -2745,6 +2783,7 @@ function bindEvents() {
   els.exportButtons.forEach(btn => btn.addEventListener('click', () => exportFile(btn.dataset.export)));
   els.searchIntervals.addEventListener('input', () => { state.intervalPage = 1; renderIntervals(); });
   els.statusFilter.addEventListener('change', () => { state.intervalPage = 1; renderIntervals(); });
+  els.intervalsPanel?.addEventListener('toggle', updateIntervalsDisclosure);
   els.videoPlayer.addEventListener('seeking', () => {
     if (state.segmentPreviewStopper) clearSegmentPreviewStopper();
     stopAdPreviewAudio();

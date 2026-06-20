@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260618-progressive">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-pauses-collapse">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -259,31 +259,39 @@
         </details>
       </section>
 
-      <section class="panel intervals-panel" id="intervalsPanel" hidden>
-        <div class="intervals-header">
-          <div>
-            <h2>Intervalos encontrados</h2>
-            <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em uma pausa para abrir os detalhes ao lado em telas grandes, ou logo abaixo no celular.</p>
+      <details class="panel intervals-panel" id="intervalsPanel" hidden>
+        <summary class="intervals-disclosure" title="Mostra ou esconde a lista de pausas encontradas">
+          <span>
+            <strong>Intervalos encontrados</strong>
+            <small id="intervalsSummaryText">A lista fica recolhida para deixar a tela mais limpa.</small>
+          </span>
+          <span class="summary-action" id="intervalsSummaryAction">Ver pausas ▾</span>
+        </summary>
+        <div class="intervals-panel-body">
+          <div class="intervals-header">
+            <div>
+              <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em uma pausa para abrir os detalhes ao lado em telas grandes, ou logo abaixo no celular.</p>
+            </div>
+            <div class="filters">
+              <input id="searchIntervals" class="input" maxlength="80" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
+              <select id="statusFilter" class="input" title="Filtra os intervalos pelo status de revisão">
+                <option value="">Todos os status</option>
+                <option value="pendente">Pendente</option>
+                <option value="roteirizado">Roteirizado</option>
+                <option value="gravado">Gravado</option>
+                <option value="revisado">Revisado</option>
+                <option value="descartado">Descartado</option>
+              </select>
+              <button class="button" id="addIntervalListBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">Adicionar no tempo atual</button>
+            </div>
           </div>
-          <div class="filters">
-            <input id="searchIntervals" class="input" maxlength="80" placeholder="Buscar no roteiro..." title="Filtra os intervalos pelo título, roteiro ou observações">
-            <select id="statusFilter" class="input" title="Filtra os intervalos pelo status de revisão">
-              <option value="">Todos os status</option>
-              <option value="pendente">Pendente</option>
-              <option value="roteirizado">Roteirizado</option>
-              <option value="gravado">Gravado</option>
-              <option value="revisado">Revisado</option>
-              <option value="descartado">Descartado</option>
-            </select>
-            <button class="button" id="addIntervalListBtn" disabled title="Cria um intervalo manual no tempo atual do vídeo">Adicionar no tempo atual</button>
+          <div id="intervalPager" class="interval-pager" hidden aria-live="polite"></div>
+          <div id="intervalsContainer" class="intervals empty-state">
+            <h3>Nenhum intervalo detectado ainda.</h3>
+            <p>Abra um vídeo e clique em “Detectar pausas entre falas”.</p>
           </div>
         </div>
-        <div id="intervalPager" class="interval-pager" hidden aria-live="polite"></div>
-        <div id="intervalsContainer" class="intervals empty-state">
-          <h3>Nenhum intervalo detectado ainda.</h3>
-          <p>Abra um vídeo e clique em “Detectar pausas entre falas”.</p>
-        </div>
-      </section>
+      </details>
     </section>
   </main>
 
@@ -307,6 +315,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260618-progressive"></script>
+  <script src="/static/js/app.js?v=20260620-pauses-collapse"></script>
 </body>
 </html>

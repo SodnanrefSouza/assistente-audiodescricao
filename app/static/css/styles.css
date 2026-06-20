@@ -829,6 +829,40 @@ main, section, aside, header {
   font-weight: 900;
   font-size: 13px;
 }
+.intervals-disclosure {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.intervals-disclosure::-webkit-details-marker { display: none; }
+.intervals-disclosure strong {
+  display: block;
+  font-size: 20px;
+}
+.intervals-disclosure small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.intervals-panel[open] > .intervals-disclosure {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.intervals-panel[open] > .intervals-disclosure .summary-action {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.intervals-panel-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
 .compact-panel details[open] .summary-action { background: var(--primary); color: #fff; border-color: var(--primary); }
 .compact-panel details[open] summary { margin-bottom: 14px; }
 .export-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
@@ -1305,6 +1339,12 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .workspace { gap: 12px; }
   .panel {
     padding: 16px;
+  }
+  .intervals-disclosure {
+    align-items: flex-start;
+  }
+  .intervals-disclosure .summary-action {
+    flex: 0 0 auto;
   }
   .form-grid,
   .status-row,
