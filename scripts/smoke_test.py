@@ -48,7 +48,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260620-pauses-collapse",
+            "20260620-player-step",
             "Detectar pausas entre falas",
             "Ajustes de detecção",
             "Exportar ▾",
@@ -69,12 +69,17 @@ class SmokeTest(unittest.TestCase):
         self.assertNotIn("Histórico ▾", html)
         self.assertNotIn("3. Detectar pausas", html)
         self.assertNotIn("5. Intervalos", html)
+        self.assertNotIn('id="playPauseBtn"', html)
+        self.assertNotIn("Play/Pause", html)
 
     def test_static_assets_include_timeline_controls(self) -> None:
         js = (ROOT / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         css = (ROOT / "app" / "static" / "css" / "styles.css").read_text(encoding="utf-8")
         for expected in (
             "playbackSpeed: $('playbackSpeed')",
+            "seekStep: $('seekStep')",
+            "seekBackwardBtn: $('seekBackwardBtn')",
+            "seekForwardBtn: $('seekForwardBtn')",
             "intervalPager: $('intervalPager')",
             "addIntervalAtCurrentBtn: $('addIntervalAtCurrentBtn')",
             "addIntervalListBtn: $('addIntervalListBtn')",
@@ -122,6 +127,7 @@ class SmokeTest(unittest.TestCase):
             ".summary-action",
             ".project-open",
             ".speed-control",
+            ".seek-control",
             ".top-menu-popover",
             ".settings-popover",
             ".video-time-readout",

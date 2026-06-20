@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-pauses-collapse">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-player-step">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -173,9 +173,22 @@
             </div>
           </div>
           <div class="player-actions">
-            <button class="button" id="back2Btn" disabled title="Volta o vídeo dois segundos">⟲ Voltar 2s</button>
-            <button class="button" id="playPauseBtn" disabled title="Toca ou pausa o vídeo">▶︎ Play/Pause</button>
-            <button class="button" id="forward2Btn" disabled title="Avança o vídeo dois segundos">Avançar 2s ⟳</button>
+            <div class="seek-cluster" aria-label="Ajuste fino da posição do vídeo">
+              <span class="seek-cluster-label">Ajuste fino</span>
+              <div class="seek-control">
+                <button class="button seek-button" id="seekBackwardBtn" disabled aria-label="Voltar o vídeo" title="Volta o vídeo pelo passo selecionado">↶</button>
+                <label class="seek-step-control" title="Escolhe quantos segundos os botões de ajuste avançam ou voltam">
+                  <span>Passo</span>
+                  <select id="seekStep" class="input" disabled>
+                    <option value="0.5">0,5 s</option>
+                    <option value="1">1 s</option>
+                    <option value="2" selected>2 s</option>
+                    <option value="5">5 s</option>
+                  </select>
+                </label>
+                <button class="button seek-button" id="seekForwardBtn" disabled aria-label="Avançar o vídeo" title="Avança o vídeo pelo passo selecionado">↷</button>
+              </div>
+            </div>
             <label class="speed-control" title="Muda só a velocidade de revisão do vídeo; não altera exportações">Velocidade
               <select id="playbackSpeed" class="input" disabled>
                 <option value="0.75">0,75x</option>
@@ -315,6 +328,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260620-pauses-collapse"></script>
+  <script src="/static/js/app.js?v=20260620-player-step"></script>
 </body>
 </html>

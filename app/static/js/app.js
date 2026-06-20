@@ -85,9 +85,9 @@ const els = {
   timelineStatus: $('timelineStatus'),
   audioInsightPanel: $('audioInsightPanel'),
   videoNavActions: $('videoNavActions'),
-  back2Btn: $('back2Btn'),
-  playPauseBtn: $('playPauseBtn'),
-  forward2Btn: $('forward2Btn'),
+  seekBackwardBtn: $('seekBackwardBtn'),
+  seekForwardBtn: $('seekForwardBtn'),
+  seekStep: $('seekStep'),
   addIntervalAtCurrentBtn: $('addIntervalAtCurrentBtn'),
   noiseDb: $('noiseDb'),
   minSilence: $('minSilence'),
@@ -261,6 +261,9 @@ function applyTooltips(root = document) {
     ['#nextPendingBtn', 'Vai para o próximo intervalo que ainda não foi revisado.'],
     ['#nextPauseBtn', 'Vai para a próxima pausa em relação ao tempo atual do vídeo.'],
     ['#markReviewedBtn', 'Marca o intervalo atual como revisado.'],
+    ['#seekBackwardBtn', 'Volta o vídeo pela quantidade escolhida no campo Passo.'],
+    ['#seekForwardBtn', 'Avança o vídeo pela quantidade escolhida no campo Passo.'],
+    ['#seekStep', 'Escolhe a precisão dos botões de ajuste: 0,5, 1, 2 ou 5 segundos.'],
     ['#playbackSpeed', 'Muda apenas a velocidade de reprodução para revisar o vídeo mais rápido ou mais devagar.'],
     ['#videoTimeReadout', 'Mostra onde o player está no vídeo e a duração total no formato 00:00:00.'],
     ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
@@ -855,9 +858,9 @@ function setProject(project) {
   els.videoPlayer.src = `/media/${project.id}/video`;
   els.deleteProjectBtn.disabled = false;
   els.detectBtn.disabled = false;
-  els.back2Btn.disabled = false;
-  els.playPauseBtn.disabled = false;
-  els.forward2Btn.disabled = false;
+  els.seekBackwardBtn.disabled = false;
+  els.seekForwardBtn.disabled = false;
+  els.seekStep.disabled = false;
   if (els.addIntervalAtCurrentBtn) els.addIntervalAtCurrentBtn.disabled = false;
   if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = false;
   if (els.playbackSpeed) els.playbackSpeed.disabled = false;
@@ -905,9 +908,9 @@ function clearProject() {
   updateSelectedSegmentBar(null);
   els.deleteProjectBtn.disabled = true;
   els.detectBtn.disabled = true;
-  els.back2Btn.disabled = true;
-  els.playPauseBtn.disabled = true;
-  els.forward2Btn.disabled = true;
+  els.seekBackwardBtn.disabled = true;
+  els.seekForwardBtn.disabled = true;
+  els.seekStep.disabled = true;
   if (els.addIntervalAtCurrentBtn) els.addIntervalAtCurrentBtn.disabled = true;
   if (els.addIntervalListBtn) els.addIntervalListBtn.disabled = true;
   if (els.playbackSpeed) els.playbackSpeed.disabled = true;
@@ -2694,19 +2697,25 @@ async function exportFile(kind) {
 }
 
 function setupPlayerButtons() {
-  els.back2Btn.addEventListener('click', () => {
+  const selectedStep = () => Math.max(0.1, Number(els.seekStep?.value || 2));
+  const updateSeekButtonLabels = () => {
+    const step = selectedStep();
+    const label = Number.isInteger(step) ? `${step} segundo${step === 1 ? '' : 's'}` : `${String(step).replace('.', ',')} segundo`;
+    els.seekBackwardBtn.setAttribute('aria-label', `Voltar ${label}`);
+    els.seekBackwardBtn.title = `Volta o vídeo ${label}.`;
+    els.seekForwardBtn.setAttribute('aria-label', `Avançar ${label}`);
+    els.seekForwardBtn.title = `Avança o vídeo ${label}.`;
+  };
+  els.seekBackwardBtn.addEventListener('click', () => {
     clearSegmentPreviewStopper();
-    els.videoPlayer.currentTime = Math.max(0, els.videoPlayer.currentTime - 2);
+    els.videoPlayer.currentTime = Math.max(0, els.videoPlayer.currentTime - selectedStep());
   });
-  els.forward2Btn.addEventListener('click', () => {
+  els.seekForwardBtn.addEventListener('click', () => {
     clearSegmentPreviewStopper();
-    els.videoPlayer.currentTime = Math.min(els.videoPlayer.duration || Infinity, els.videoPlayer.currentTime + 2);
+    els.videoPlayer.currentTime = Math.min(els.videoPlayer.duration || Infinity, els.videoPlayer.currentTime + selectedStep());
   });
-  els.playPauseBtn.addEventListener('click', () => {
-    clearSegmentPreviewStopper();
-    if (els.videoPlayer.paused) els.videoPlayer.play();
-    else els.videoPlayer.pause();
-  });
+  els.seekStep.addEventListener('change', updateSeekButtonLabels);
+  updateSeekButtonLabels();
 }
 
 function setupTopMenus() {

@@ -246,7 +246,46 @@ main, section, aside, header {
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(49,87,213,0.18);
 }
-.player-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.player-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; align-items: flex-end; }
+.seek-cluster {
+  display: grid;
+  gap: 4px;
+}
+.seek-cluster-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+.seek-control {
+  display: inline-grid;
+  grid-template-columns: var(--control-height) minmax(112px, auto) var(--control-height);
+  gap: 5px;
+  align-items: stretch;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7f9fc;
+}
+.seek-control .seek-button {
+  width: var(--control-height);
+  min-width: var(--control-height);
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+.seek-step-control {
+  display: grid;
+  grid-template-columns: auto minmax(58px, 1fr);
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+.seek-step-control .input {
+  min-height: var(--control-height);
+  padding: 7px 8px;
+}
 .timeline-panel,
 .audio-insight-panel {
   margin-top: 12px;
@@ -1368,6 +1407,16 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;
+  }
+  .seek-cluster {
+    width: 100%;
+  }
+  .seek-control {
+    grid-template-columns: var(--control-height) minmax(0, 1fr) var(--control-height);
+    width: 100%;
+  }
+  .seek-control .button {
+    width: var(--control-height);
   }
   .button,
   .pref-toggle,
