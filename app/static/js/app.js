@@ -2133,7 +2133,7 @@ function intervalRowHtml(interval) {
       <span class="interval-row-chips">
         <span class="rec-chip ${info.recommendationState}">${intervalRecommendationText(info)}</span>
         <span class="status-chip">${statusLabel(interval.status || 'pendente')}</span>
-        <span class="row-open">Ver detalhes</span>
+        <span class="row-open">Abrir detalhes →</span>
       </span>
     </button>
   `;
@@ -2734,7 +2734,12 @@ function setupTopMenus() {
   });
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
+    const activeMenu = document.activeElement?.closest?.('details.top-menu');
     menus.forEach(menu => menu.removeAttribute('open'));
+    if (activeMenu) {
+      event.preventDefault();
+      activeMenu.querySelector('summary')?.focus();
+    }
   });
 }
 

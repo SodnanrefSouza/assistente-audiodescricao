@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-player-step">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-focus-system">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -87,8 +87,8 @@
         <div class="header-actions">
           <button class="button primary" id="detectBtn" hidden title="Analisa a transcrição e cria pausas entre falas. O som de fundo entra depois como aviso.">Detectar pausas entre falas</button>
           <details class="top-menu settings-menu" id="settingsMenu">
-            <summary class="button menu-summary" title="Abre os ajustes finos usados na detecção e na checagem do fundo">Ajustes de detecção ▾</summary>
-            <div class="top-menu-popover settings-popover" aria-label="Ajustes de detecção">
+            <summary class="button menu-summary" aria-controls="settingsPopover" title="Abre os ajustes finos usados na detecção e na checagem do fundo">Ajustes de detecção ▾</summary>
+            <div class="top-menu-popover settings-popover" id="settingsPopover" aria-label="Ajustes de detecção">
               <div class="form-grid">
                 <label>
                   Sensibilidade do fundo (dB)
@@ -129,8 +129,8 @@
             </div>
           </details>
           <details class="top-menu export-menu" id="exportMenu" hidden>
-            <summary class="button menu-summary" title="Abre os arquivos que podem ser baixados deste projeto">Exportar ▾</summary>
-            <div class="top-menu-popover export-actions" aria-label="Formatos de exportação">
+            <summary class="button menu-summary" aria-controls="exportPopover" title="Abre os arquivos que podem ser baixados deste projeto">Exportar ▾</summary>
+            <div class="top-menu-popover export-actions" id="exportPopover" aria-label="Formatos de exportação">
               <button class="button" data-export="script" disabled title="Baixa um roteiro em Markdown para revisar ou entregar">Roteiro .md</button>
               <button class="button" data-export="csv" disabled title="Baixa uma planilha simples com todos os intervalos">Planilha .csv</button>
               <button class="button" data-export="srt" disabled title="Baixa o roteiro em formato de legenda SRT">Roteiro .srt</button>
@@ -273,14 +273,14 @@
       </section>
 
       <details class="panel intervals-panel" id="intervalsPanel" hidden>
-        <summary class="intervals-disclosure" title="Mostra ou esconde a lista de pausas encontradas">
+        <summary class="intervals-disclosure" aria-controls="intervalsPanelBody" title="Mostra ou esconde a lista de pausas encontradas">
           <span>
             <strong>Intervalos encontrados</strong>
             <small id="intervalsSummaryText">A lista fica recolhida para deixar a tela mais limpa.</small>
           </span>
           <span class="summary-action" id="intervalsSummaryAction">Ver pausas ▾</span>
         </summary>
-        <div class="intervals-panel-body">
+        <div class="intervals-panel-body" id="intervalsPanelBody">
           <div class="intervals-header">
             <div>
               <p class="muted">A lista mostra poucos intervalos por vez para ficar leve. Clique em uma pausa para abrir os detalhes ao lado em telas grandes, ou logo abaixo no celular.</p>
@@ -328,6 +328,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260620-player-step"></script>
+  <script src="/static/js/app.js?v=20260620-focus-system"></script>
 </body>
 </html>

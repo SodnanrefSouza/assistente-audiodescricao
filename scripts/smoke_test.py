@@ -48,7 +48,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260620-player-step",
+            "20260620-focus-system",
             "Detectar pausas entre falas",
             "Ajustes de detecção",
             "Exportar ▾",
@@ -61,6 +61,9 @@ class SmokeTest(unittest.TestCase):
             'id="videoNavActions" aria-label="Navegação rápida entre pausas" hidden',
             'id="intervalsPanel" hidden',
             'id="intervalsSummaryAction">Ver pausas',
+            'aria-controls="settingsPopover"',
+            'aria-controls="exportPopover"',
+            'aria-controls="intervalsPanelBody"',
             'id="exportMenu" hidden',
             'data-number-field data-min="-80"',
             'maxlength="80"',
@@ -91,6 +94,7 @@ class SmokeTest(unittest.TestCase):
             "function enforceInputLimits",
             "function sanitizeNumberInput",
             "function setupTopMenus",
+            "activeMenu.querySelector('summary')?.focus()",
             "function updateVideoTimeReadout",
             "function intervalsByStart",
             "function transcriptUiState",
@@ -147,6 +151,11 @@ class SmokeTest(unittest.TestCase):
             ".timeline-cell.caution",
             ".time-edit-grid",
             ".recording-preview-wrap",
+            "--control-height-compact: 40px",
+            "--font-control: 15px",
+            "--interactive-border:",
+            ".advanced > summary",
+            ".timeline-cell:not(.empty):hover",
         ):
             self.assertIn(expected, css)
 
