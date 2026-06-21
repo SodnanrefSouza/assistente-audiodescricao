@@ -48,7 +48,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260620-control-grid",
+            "20260620-compact-controls",
             "Detectar pausas entre falas",
             "Ajustes de detecção",
             "Exportar ▾",
@@ -64,6 +64,9 @@ class SmokeTest(unittest.TestCase):
             'aria-controls="settingsPopover"',
             'aria-controls="exportPopover"',
             'aria-controls="intervalsPanelBody"',
+            '<option value="0.1">0,1 s</option>',
+            '<option value="0.25">0,25 s</option>',
+            '<option value="0.5" selected>0,5 s</option>',
             'id="exportMenu" hidden',
             'data-number-field data-min="-80"',
             'maxlength="80"',
@@ -161,6 +164,8 @@ class SmokeTest(unittest.TestCase):
             ".video-nav-actions .button",
             ".control-label",
             "--control-height-compact: 44px",
+            "minmax(280px, 440px)",
+            "minmax(150px, 220px)",
         ):
             self.assertIn(expected, css)
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Assistente de Audiodescrição</title>
-  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-control-grid">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260620-compact-controls">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Ir para a edição</a>
@@ -180,9 +180,11 @@
                 <label class="seek-step-control" title="Escolhe quantos segundos os botões de ajuste avançam ou voltam">
                   <span>Passo</span>
                   <select id="seekStep" class="input" disabled>
-                    <option value="0.5">0,5 s</option>
+                    <option value="0.1">0,1 s</option>
+                    <option value="0.25">0,25 s</option>
+                    <option value="0.5" selected>0,5 s</option>
                     <option value="1">1 s</option>
-                    <option value="2" selected>2 s</option>
+                    <option value="2">2 s</option>
                     <option value="5">5 s</option>
                   </select>
                 </label>
@@ -329,6 +331,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=20260620-control-grid"></script>
+  <script src="/static/js/app.js?v=20260620-compact-controls"></script>
 </body>
 </html>

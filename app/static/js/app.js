@@ -263,7 +263,7 @@ function applyTooltips(root = document) {
     ['#markReviewedBtn', 'Marca o intervalo atual como revisado.'],
     ['#seekBackwardBtn', 'Volta o vídeo pela quantidade escolhida no campo Passo.'],
     ['#seekForwardBtn', 'Avança o vídeo pela quantidade escolhida no campo Passo.'],
-    ['#seekStep', 'Escolhe a precisão dos botões de ajuste: 0,5, 1, 2 ou 5 segundos.'],
+    ['#seekStep', 'Escolhe a precisão dos botões de ajuste: 0,1, 0,25, 0,5, 1, 2 ou 5 segundos.'],
     ['#playbackSpeed', 'Muda apenas a velocidade de reprodução para revisar o vídeo mais rápido ou mais devagar.'],
     ['#videoTimeReadout', 'Mostra onde o player está no vídeo e a duração total no formato 00:00:00.'],
     ['#selectedSegmentBar', 'Mostra no player onde a pausa selecionada começa e termina no vídeo inteiro.'],
@@ -2697,7 +2697,7 @@ async function exportFile(kind) {
 }
 
 function setupPlayerButtons() {
-  const selectedStep = () => Math.max(0.1, Number(els.seekStep?.value || 2));
+  const selectedStep = () => Math.max(0.1, Number(els.seekStep?.value || 0.5));
   const updateSeekButtonLabels = () => {
     const step = selectedStep();
     const label = Number.isInteger(step) ? `${step} segundo${step === 1 ? '' : 's'}` : `${String(step).replace('.', ',')} segundo`;

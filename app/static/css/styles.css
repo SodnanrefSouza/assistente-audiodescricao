@@ -262,10 +262,11 @@ main, section, aside, header {
 }
 .player-actions {
   display: grid;
-  grid-template-columns: minmax(280px, 1.2fr) minmax(150px, 0.55fr) minmax(190px, 0.8fr);
+  grid-template-columns: minmax(280px, 440px) minmax(140px, 180px) minmax(210px, 280px);
   gap: 12px;
   margin-top: 12px;
   align-items: end;
+  justify-content: start;
 }
 .seek-cluster {
   display: grid;
@@ -1193,15 +1194,17 @@ main, section, aside, header {
 .status-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .time-edit-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(150px, 220px));
   gap: 10px;
   margin: 10px 0;
+  justify-content: start;
 }
 .time-edit-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(190px, 260px));
   gap: 8px;
   margin: 0 0 10px;
+  justify-content: start;
 }
 .time-edit-actions .button { width: 100%; }
 .recording-preview-wrap {
@@ -1483,8 +1486,11 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .project-header, .export-panel, .intervals-header, .section-header { flex-direction: column; align-items: stretch; }
   .workflow-panel { grid-template-columns: 1fr; }
   .workflow-actions { justify-content: flex-start; }
-  .player-actions { grid-template-columns: minmax(260px, 1fr) minmax(150px, 0.55fr); }
-  .player-actions > .button { grid-column: 1 / -1; }
+  .player-actions { grid-template-columns: minmax(260px, 440px) minmax(140px, 180px); }
+  .player-actions > .button {
+    grid-column: 1;
+    max-width: 280px;
+  }
   .video-nav-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .transcript-tools { grid-template-columns: 1fr; }
   .history-item { align-items: stretch; flex-direction: column; }
@@ -1572,6 +1578,7 @@ code { background: #eef2f9; border-radius: 6px; padding: 1px 5px; }
   .file-button {
     width: 100%;
   }
+  .player-actions > .button { max-width: none; }
   .pager-actions {
     grid-template-columns: 1fr;
     width: 100%;
