@@ -48,7 +48,7 @@ class SmokeTest(unittest.TestCase):
             "addIntervalListBtn",
             "intervalPager",
             'class="panel transcript-panel" hidden',
-            "20260620-focus-system",
+            "20260620-control-grid",
             "Detectar pausas entre falas",
             "Ajustes de detecção",
             "Exportar ▾",
@@ -156,6 +156,11 @@ class SmokeTest(unittest.TestCase):
             "--interactive-border:",
             ".advanced > summary",
             ".timeline-cell:not(.empty):hover",
+            "grid-template-columns: repeat(2, minmax(0, 1fr));",
+            ".seek-control .seek-button",
+            ".video-nav-actions .button",
+            ".control-label",
+            "--control-height-compact: 44px",
         ):
             self.assertIn(expected, css)
 
