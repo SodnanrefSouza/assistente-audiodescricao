@@ -53,6 +53,14 @@ O fluxo ideal e:
 
 Para usuarios comuns, o caminho recomendado e usar o executavel Windows.
 
+Download pelo GitHub:
+
+```text
+https://github.com/SodnanrefSouza/assistente-audiodescricao/releases/latest
+```
+
+Na pagina de Releases, baixe `AssistenteAudioDescricao.exe`. O arquivo tambem pode aparecer compactado como `AssistenteAudioDescricao_portatil.zip`.
+
 1. Baixe ou copie o arquivo `AssistenteAudioDescricao.exe`.
 2. Coloque o executavel em uma pasta com permissao de escrita, como `Downloads` ou `Documentos`.
 3. De dois cliques no executavel.
@@ -67,6 +75,8 @@ Observacoes importantes:
 - o FFmpeg ja deve estar embutido no pacote gerado para entrega;
 - na primeira transcricao, pode ser necessario internet para baixar o modelo de reconhecimento de fala;
 - por nao ter assinatura digital comercial, o Windows SmartScreen pode exibir um aviso antes de abrir.
+
+O executavel nao fica versionado como arquivo normal do repositorio porque tem mais de 250 MB. O GitHub bloqueia arquivos grandes em commits comuns. Por isso, o codigo fica no repositorio e o executavel fica publicado em `Releases`, que e o local correto para baixar pacotes prontos.
 
 ## Fluxo de uso
 
@@ -368,6 +378,14 @@ dist/AssistenteAudioDescricao_portatil.zip
 ```
 
 O script de build tenta incluir FFmpeg e FFprobe no executavel quando eles existem em `third_party/ffmpeg/bin` ou estao instalados no sistema.
+
+Versao publicada para teste:
+
+```text
+https://github.com/SodnanrefSouza/assistente-audiodescricao/releases/tag/v2026.07.02
+```
+
+Nesta versao, o executavel foi gerado em 02/07/2026, testado localmente em `/api/health` e publicado como asset da Release.
 
 ## Estrutura do projeto
 
